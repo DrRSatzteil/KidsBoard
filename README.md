@@ -298,6 +298,9 @@ kidsboard_retro/
 ├── wifi_manager.h        WiFi connection + AP setup mode
 └── TFT_eSPI/
     └── User_Setup.h      TFT_eSPI config (copy to library folder!)
+└── tools/
+    └── convert_avatar.py Python script to convert PNG to C array
+    └── demo.png          Example avatar image
 ```
 
 ---
