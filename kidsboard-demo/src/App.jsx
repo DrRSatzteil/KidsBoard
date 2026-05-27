@@ -19,20 +19,22 @@ export default function App(){
   const [sc,setSc]=useState("home");
   const [ki,setKi]=useState(null);
   const [day,setDay]=useState(0);
-  const [done,setDone]=useState(()=>KIDS.map(k=>k.tasks.map(()=>false)));
+  const [done,setDone]=useState(()=>KIDS.map(k=>Array(5).fill(0).map(()=>k.tasks.map(()=>false))));
   const [showIP,setShowIP]=useState(false);
   const [showV,setShowV]=useState(false);
   const [boom,setBoom]=useState(false);
   const kid=ki!==null?KIDS[ki]:null;
-  const kd=ki!==null?done[ki]:[];
-  const tot=kid?kid.tasks.length:0;
-  const nd=kd.filter(Boolean).length;
+  const kd=ki!==null?done[ki][day]:[];
+  const tot=kid?kid.tasks.length*5:0;
+  const nd=ki!==null?done[ki].flat().filter(Boolean).length:0;
+  const dayTot=kid?kid.tasks.length:0;
+  const dayNd=kd.filter(Boolean).length;
   const pct=tot?Math.round(nd/tot*100):0;
   const stars=pct>=100?5:pct>=80?4:pct>=60?3:pct>=40?2:pct>=20?1:0;
   function toggle(ti){
-    const nx=done.map((r,i)=>i!==ki?r:r.map((v,j)=>j===ti?!v:v));
+    const nx=done.map((r,i)=>i!==ki?r:r.map((d,di)=>di!==day?d:d.map((v,j)=>j===ti?!v:v)));
     setDone(nx);
-    if(nx[ki].every(Boolean)){setBoom(true);setTimeout(()=>setBoom(false),2200);}
+    if(nx[ki][day].every(Boolean)){setBoom(true);setTimeout(()=>setBoom(false),2200);}
   }
   const sb={position:"absolute",bottom:0,left:0,right:0,height:22,background:"rgba(4,4,20,0.95)",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 6px"};
   const mn={fontFamily:"monospace"};
@@ -68,7 +70,7 @@ export default function App(){
           <div style={{position:"absolute",inset:0,background:"#08090f"}}/>
           <div style={{position:"absolute",top:0,left:0,right:0,height:52,background:"#0f1520",borderBottom:`2px solid ${kid.color}`}}>
             <div style={{padding:"5px 10px 0"}}><span style={{...mn,color:kid.color,fontSize:12}}>{kid.name}</span></div>
-            <div style={{padding:"1px 10px",fontSize:8,...mn,color:"#555"}}>{nd}/{tot} · {pct}%</div>
+            <div style={{padding:"1px 10px",fontSize:8,...mn,color:"#555"}}>{dayNd}/{dayTot} · {Math.round(dayNd/dayTot*100)}%</div>
             <div style={{position:"absolute",top:8,right:8,display:"flex",gap:5}}>
               <div onClick={()=>setSc("rewards")} style={{border:`1px solid ${kid.color}`,borderRadius:4,padding:"3px 6px",...mn,color:kid.color,fontSize:7,cursor:"pointer"}}>Woche</div>
               <div onClick={()=>{setSc("home");setKi(null);}} style={{border:"1px solid #444",borderRadius:4,padding:"3px 8px",color:"#aaa",fontSize:10,cursor:"pointer"}}>←</div>
