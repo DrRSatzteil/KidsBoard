@@ -360,7 +360,8 @@ void drawWeekendScreen(TFT_eSPI& tft, AppState& state) {
 
   // Large percentage display
   char scoreBuf[8];
-  sprintf(scoreBuf, "%d%%", pct);
+  // sprintf(scoreBuf, "%d%%", pct); <- The font does not draw a % sign
+  sprintf(scoreBuf, "%d", pct);
   tft.setTextFont(7);
   tft.setTextColor(TFT_WHITE, COLOR_BG);
   tw = tft.textWidth(scoreBuf);

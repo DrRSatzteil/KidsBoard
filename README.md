@@ -2,7 +2,9 @@
 
 A tactile digital weekly planner for families, built with an ESP32, a 2.8" touch display, and RFID card login. Each family member gets their own RFID card to log in and check off their tasks for the week. Rewards are automatically calculated based on the weekly score.
 
-![KidsBoard](docs/kidsboard.jpg)
+Demo: https://drrsatzteil.github.io/KidsBoard/
+
+The demo is a web interface that simulates the functionality of the device and is not an exact replica of the actual device. The colors of the visual assets are highly saturated to compensate the limited color palette of the display and therefore look overly saturated on a normal computer display.
 
 ---
 
@@ -233,11 +235,11 @@ Upload the photo to ChatGPT and prompt:
 Download the result as a PNG.
 
 ### Step 3 – Convert to RGB565 C array
-Use the included `convert_avatar.py` script:
+Use the included `tools/convert_avatar.py` script:
 
 ```bash
-# Install dependency (once)
-pip install Pillow
+# Install dependencies (once)
+pip install Pillow numpy
 
 # Convert your avatar
 python3 convert_avatar.py my_avatar.png --name AVATAR_MYNAME
@@ -296,10 +298,10 @@ kidsboard_retro/
 ├── rfid_reader.h         RFID card reading + assignment
 ├── webserver.h           Web interface + REST API
 ├── wifi_manager.h        WiFi connection + AP setup mode
-└── TFT_eSPI/
-    └── User_Setup.h      TFT_eSPI config (copy to library folder!)
+├── TFT_eSPI/
+│   └── User_Setup.h      TFT_eSPI config (copy to library folder!)
 └── tools/
-    └── convert_avatar.py Python script to convert PNG to C array
+    ├── convert_avatar.py Python script to convert PNG to C array
     └── demo.png          Example avatar image
 ```
 

@@ -10,16 +10,16 @@ Usage:
 The output is a C array ready to paste into retro_assets.h.
 
 Requirements:
-    pip install Pillow
+    pip install Pillow numpy
 """
 
 import sys
 import argparse
-import numpy as np
 try:
     from PIL import Image, ImageEnhance
+    import numpy as np
 except ImportError:
-    print("Error: Pillow not installed. Run: pip install Pillow")
+    print("Error: dependencies not installed. Run: pip install Pillow numpy")
     sys.exit(1)
 
 
