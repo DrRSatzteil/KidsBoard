@@ -71,6 +71,38 @@ void setBrightness(int brightness) {
   ledcWrite(PIN_TFT_LED, brightness);
 }
 
+// Returns the target brightness based on current battery level
+int getTargetBrightness() {
+  int pct = readBatteryPercent();
+  if (pct < BAT_CRIT) return 0;
+  if (pct < BAT_LOW)  return BRIGHT_DIM;
+  return BRIGHT_FULL;
+}
+
+// Show low battery warning and enter deep sleep
+void handleCriticalBattery(TFT_eSPI& tft) {
+  tft.fillScreen(TFT_BLACK);
+  setBrightness(BRIGHT_DIM);
+  tft.setTextFont(4);
+  tft.setTextColor(TFT_RED, TFT_BLACK);
+  int tw = tft.textWidth(STR_BAT_EMPTY);
+  tft.setCursor((240 - tw) / 2, 110);
+  tft.print(STR_BAT_EMPTY);
+  tft.setTextFont(2);
+  tft.setTextColor(0xFFE0, TFT_BLACK);
+  tw = tft.textWidth(STR_BAT_CHARGE);
+  tft.setCursor((240 - tw) / 2, 155);
+  tft.print(STR_BAT_CHARGE);
+  tft.setTextFont(1);
+  tft.setTextColor(COLOR_MUTED, TFT_BLACK);
+  tw = tft.textWidth(STR_BAT_SHUTDOWN);
+  tft.setCursor((240 - tw) / 2, 185);
+  tft.print(STR_BAT_SHUTDOWN);
+  delay(5000);
+  setBrightness(0);
+  esp_deep_sleep_start();
+}
+
 // ── Battery percent with 32-value rolling average ─
 #define BAT_SAMPLES 32
 static int batRolling[BAT_SAMPLES] = {0};
@@ -148,26 +180,7 @@ void setup() {
   if (batPct < BAT_CRIT) {
     tft.init();
     tft.setRotation(2);
-    tft.fillScreen(TFT_BLACK);
-    setBrightness(BRIGHT_DIM);
-    tft.setTextFont(4);
-    tft.setTextColor(TFT_RED, TFT_BLACK);
-    int tw = tft.textWidth(STR_BAT_EMPTY);
-    tft.setCursor((240 - tw) / 2, 110);
-    tft.print(STR_BAT_EMPTY);
-    tft.setTextFont(2);
-    tft.setTextColor(0xFFE0, TFT_BLACK);
-    tw = tft.textWidth(STR_BAT_CHARGE);
-    tft.setCursor((240 - tw) / 2, 155);
-    tft.print(STR_BAT_CHARGE);
-    tft.setTextFont(1);
-    tft.setTextColor(COLOR_MUTED, TFT_BLACK);
-    tw = tft.textWidth(STR_BAT_SHUTDOWN);
-    tft.setCursor((240 - tw) / 2, 185);
-    tft.print(STR_BAT_SHUTDOWN);
-    delay(5000);
-    setBrightness(0);
-    esp_deep_sleep_start();
+    handleCriticalBattery(tft);
   }
 
   // Watchdog
@@ -241,8 +254,8 @@ void setup() {
     Serial.println("AP mode: http://" + WiFi.softAPIP().toString());
   }
 
-  // Backlight on
-  setBrightness(batPct < BAT_LOW ? BRIGHT_DIM : BRIGHT_FULL);
+  // Backlight on – brightness depends on battery level
+  setBrightness(getTargetBrightness());
 
   // Home Screen
   state.screen = SCREEN_HOME;
@@ -267,11 +280,21 @@ void loop() {
     readBatteryPercent();  // Updates rolling buffer
   }
 
-  // Redraw status bar every minute
-  if (state.screen == SCREEN_HOME &&
-      millis() - lastBatRefresh > BAT_REFRESH_MS) {
+  // Adjust brightness and check critical battery level
+  if (millis() - lastBatRefresh > BAT_REFRESH_MS) {
     lastBatRefresh = millis();
-    drawStatusBar(tft, state);
+    int batPct = readBatteryPercent();
+
+    // Critical: warn and shut down
+    if (batPct < BAT_CRIT) handleCriticalBattery(tft);
+
+    // Adjust brightness to match battery level
+    setBrightness(getTargetBrightness());
+
+    // Redraw status bar on home screen
+    if (state.screen == SCREEN_HOME) {
+      drawStatusBar(tft, state);
+    }
   }
 
   // RFID Card assignment pending (non-blocking)
@@ -284,7 +307,7 @@ void loop() {
       }
       state.lastInteraction = millis();
       drawHomeScreen(tft, state);
-      setBrightness(BRIGHT_FULL);
+      setBrightness(getTargetBrightness());
       tft.fillRect(0, 260, 240, 60, COLOR_CARD);
       tft.setTextFont(1);
       tft.setTextColor(TFT_YELLOW, COLOR_CARD);
