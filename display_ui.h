@@ -138,7 +138,7 @@ void drawStatusBar(TFT_eSPI& tft, AppState& state) {
 
 // Avatar arrays per kid index
 // Order must match data.h:
-// kids[0]=Mila, kids[1]=Felix, kids[2]=Mum, kids[3]=Dad
+// kids[0]=Mila, kids[1]=Felix, kids[2]=Mama, kids[3]=Papa
 const uint16_t* AVATAR_DATA[] = {
   AVATAR_MILA,
   AVATAR_FELIX,
@@ -550,7 +550,7 @@ struct SSCloud {
   float    x;
   float    speed;
   int      y;
-  uint8_t  scale;        // Scale factor applied to cloud width
+  float    scale;        // Scale factor applied to cloud width
   uint16_t buf[CLOUD_W * CLOUD_H];  // Cloud pixels in RAM
 };
 
@@ -569,18 +569,21 @@ void initScreensaver(TFT_eSPI& tft) {
   uint16_t cloudBuf[CLOUD_W * CLOUD_H];
   memcpy_P(cloudBuf, SPRITE_CLOUD, CLOUD_W * CLOUD_H * 2);
 
-  // Three clouds at different heights, no overlap:
-  // Cloud 0: high in sky  (y=8,   no masking needed)
-  // Cloud 1: mid height   (y=65,  passes behind tree via mask)
-  // Cloud 2: lower        (y=120, passes behind tree via mask)
-  int yPositions[3] = { 8, 65, 120 };
-  uint8_t scales[3] = { 2, 1, 2  };   // large, small, medium
-  float speeds[3]   = { 1.2f, 1.8f, 0.9f };
+  // Randomize cloud sizes, heights and speeds each time screensaver starts
+  // Always one small, one medium, one large cloud – shuffled randomly
+  // Y bands keep clouds in their own vertical lane to avoid overlap
+  int yBands[3][2] = { {5, 30}, {50, 90}, {100, 140} };
+  float scales[3] = { 1.0f, 1.5f, 2.0f };
+  // Fisher-Yates shuffle
+  for (int i = 2; i > 0; i--) {
+    int j = random(0, i + 1);
+    float tmp = scales[i]; scales[i] = scales[j]; scales[j] = tmp;
+  }
 
   for (int i = 0; i < SS_NUM_CLOUDS; i++) {
-    ssClouds[i].y     = yPositions[i];
     ssClouds[i].scale = scales[i];
-    ssClouds[i].speed = speeds[i];
+    ssClouds[i].y     = random(yBands[i][0], yBands[i][1]);
+    ssClouds[i].speed = 0.6f + random(0, 20) * 0.1f;          // 0.6 – 2.5
     memcpy(ssClouds[i].buf, cloudBuf, CLOUD_W * CLOUD_H * 2);
   }
 
@@ -617,6 +620,8 @@ void updateAllClouds(TFT_eSPI& tft, float oldX[SS_NUM_CLOUDS]) {
       }
 
       // Blend new cloud position over background
+      // Sky pixels in asset are set to exact CLOUD_SKY value during generation,
+      // so writing them over the background is a no-op where background is sky
       int cy = sy - ssClouds[i].y;
       for (int cx = 0; cx < w; cx++) {
         int sx = nx + cx;
@@ -624,12 +629,7 @@ void updateAllClouds(TFT_eSPI& tft, float oldX[SS_NUM_CLOUDS]) {
         if (!isSky(sx, sy)) continue;  // mask: skip tree pixels
         int srcX = cx / ssClouds[i].scale;
         if (srcX >= CLOUD_W) srcX = CLOUD_W - 1;
-        uint16_t px = ssClouds[i].buf[cy * CLOUD_W + srcX];
-        // Skip sky-colored pixels (transparent)
-        int diff = abs((int)(px >> 11)         - (int)(CLOUD_SKY >> 11))
-                 + abs((int)((px >> 5) & 0x3F) - (int)((CLOUD_SKY >> 5) & 0x3F))
-                 + abs((int)(px & 0x1F)        - (int)(CLOUD_SKY & 0x1F));
-        if (diff > 8) lineBuf[sx - minX] = px;
+        lineBuf[sx - minX] = ssClouds[i].buf[cy * CLOUD_W + srcX];
       }
 
       tft.pushImage(minX, sy, maxX - minX, 1, lineBuf);
