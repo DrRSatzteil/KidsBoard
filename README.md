@@ -90,6 +90,8 @@ RST      →   GPIO 17
 
 > 💡 Display and RFID share the SPI bus (MOSI/MISO/SCK). Each device has its own CS pin.
 
+> 💡 Some display modules (like the TPM408-2.8) have separate SPI pins for the touch controller that are not internally connected to the display SPI pins. In that case, connect the touch SPI pins (MOSI, MISO, SCK) to the same ESP32 GPIO pins as the display.
+
 ### Voltage Divider (Battery Monitoring)
 
 ```
