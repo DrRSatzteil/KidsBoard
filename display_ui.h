@@ -359,14 +359,20 @@ void drawWeekendScreen(TFT_eSPI& tft, AppState& state) {
     tft.drawCircle(120, 88, 38 + i * 12, (uint16_t)(kid.color & 0xF7DE) >> 1);
 
   // Large percentage display
-  char scoreBuf[8];
-  // sprintf(scoreBuf, "%d%%", pct); <- The font does not draw a % sign
-  sprintf(scoreBuf, "%d", pct);
+  // Large percentage number – use drawString for transparent background
+  // Font 7 does not include the % character so we print number and % separately
+  char numBuf[5];
+  sprintf(numBuf, "%d", pct);
   tft.setTextFont(7);
-  tft.setTextColor(TFT_WHITE, COLOR_BG);
-  tw = tft.textWidth(scoreBuf);
-  tft.setCursor(120 - tw / 2, 52);
-  tft.print(scoreBuf);
+  tft.setTextColor(TFT_WHITE);
+  int numW = tft.textWidth(numBuf);
+  tft.setTextFont(4);
+  int pctW = tft.textWidth("%");
+  int totalW = numW + pctW + 2;
+  tft.setTextFont(7);
+  tft.drawString(numBuf, 120 - totalW / 2, 52);
+  tft.setTextFont(4);
+  tft.drawString("%", 120 - totalW / 2 + numW + 2, 62);
 
   tft.setTextFont(1);
   tft.setTextColor(COLOR_MUTED, COLOR_BG);
