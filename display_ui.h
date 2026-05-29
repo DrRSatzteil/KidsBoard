@@ -138,7 +138,7 @@ void drawStatusBar(TFT_eSPI& tft, AppState& state) {
 
 // Avatar arrays per kid index
 // Order must match data.h:
-// kids[0]=Mila, kids[1]=Felix, kids[2]=Mum, kids[3]=Dad
+// kids[0]=Mila, kids[1]=Felix, kids[2]=Mama, kids[3]=Papa
 const uint16_t* AVATAR_DATA[] = {
   AVATAR_MILA,
   AVATAR_FELIX,
@@ -664,13 +664,85 @@ void initStars() {
   ssStarsInitialized = true;
 }
 
+// ── Shooting star ────────────────────────────────────
+struct ShootingStar {
+  int  startX, startY;  // origin
+  int  len;             // trail length
+  int  step;            // current step (head is at startX+step, startY+step)
+  bool active;
+};
+ShootingStar shootingStar = {0, 0, 0, 0, false};
+unsigned long lastShootingStarCheck = 0;
+
+uint16_t shootingStarColor(uint8_t bri) {
+  // White-blue tint, no byte swap needed for drawPixel
+  uint8_t v5 = bri >> 3;
+  uint8_t v6 = bri >> 2;
+  return ((uint16_t)v5 << 11) | ((uint16_t)v6 << 5) | v5;
+}
+
+void updateShootingStar(TFT_eSPI& tft) {
+  unsigned long now = millis();
+
+  // Randomly trigger ~every 60s
+  if (!shootingStar.active && now - lastShootingStarCheck > 5000) {
+    lastShootingStarCheck = now;
+    if (random(100) < 8) {
+      for (int attempt = 0; attempt < 20; attempt++) {
+        int sx = random(10, 180);
+        int sy = random(5, 60);
+        if (isSky(sx, sy)) {
+          shootingStar = {sx, sy, random(12, 20), 0, true};
+          break;
+        }
+      }
+    }
+  }
+
+  if (!shootingStar.active) return;
+
+  int totalSteps = shootingStar.len * 2;  // move across screen + fade out
+
+  // Draw trail – fades to background color so no explicit erase needed
+  float timeFade = 1.0f - max(0.0f, (float)(shootingStar.step - shootingStar.len) / (float)shootingStar.len);
+  for (int i = 0; i < shootingStar.len; i++) {
+    int trailStep = shootingStar.step - i;
+    if (trailStep < 0) continue;
+    int px = shootingStar.startX + trailStep;
+    int py = shootingStar.startY + trailStep;
+    if (px < 0 || px >= 240 || py < 0 || py >= 320) continue;
+    if (!isSky(px, py)) continue;
+    float trailFade = (float)(shootingStar.len - i) / shootingStar.len;
+    uint8_t bri = (uint8_t)(255 * trailFade * timeFade);
+    if (bri >= 0) {
+      // Blend star color (white-blue) with background color
+      uint16_t bg = getBgPixel(px, py);
+      bg = ((bg & 0xFF) << 8) | (bg >> 8);
+      uint8_t bgR = ((bg >> 11) & 0x1F) << 3;
+      uint8_t bgG = ((bg >> 5)  & 0x3F) << 2;
+      uint8_t bgB = ((bg)       & 0x1F) << 3;
+      uint8_t r = (bri * 255 + (255 - bri) * bgR) / 255;
+      uint8_t g = (bri * 255 + (255 - bri) * bgG) / 255;
+      uint8_t b = (bri * min(255, bri + 30) + (255 - bri) * bgB) / 255;
+      uint16_t color = (((uint16_t)(r>>3)) << 11) | (((uint16_t)(g>>2)) << 5) | (b>>3);
+      tft.drawPixel(px, py, color);
+    }
+  }
+
+  shootingStar.step++;
+  if (shootingStar.step > totalSteps) shootingStar.active = false;
+}
+
 void drawStarFrame(TFT_eSPI& tft) {
   if (!ssStarsInitialized) initStars();
   for (int i = 0; i < SS_NUM_STARS; i++) {
     if (!isSky(ssStars[i].x, ssStars[i].y)) continue;
 
     // Erase old star with background pixel
+    // getBgPixel returns pre-swapped value (for pushImage),
+    // drawPixel needs un-swapped – swap back before use
     uint16_t nightBg = getBgPixel(ssStars[i].x, ssStars[i].y);
+    nightBg = ((nightBg & 0xFF) << 8) | (nightBg >> 8);
     tft.drawPixel(ssStars[i].x, ssStars[i].y, nightBg);
     // Also erase cross arms
     if (ssStars[i].x > 0)   tft.drawPixel(ssStars[i].x-1, ssStars[i].y,   nightBg);
@@ -698,6 +770,7 @@ void drawStarFrame(TFT_eSPI& tft) {
       if (ssStars[i].y < 319) tft.drawPixel(ssStars[i].x,   ssStars[i].y+1, starColor);
     }
   }
+  updateShootingStar(tft);
 }
 
 void drawScreensaverFrame(TFT_eSPI& tft) {
