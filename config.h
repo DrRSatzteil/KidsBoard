@@ -19,7 +19,6 @@
 // ── ILI9341 Display ───────────────────────────────
 #define PIN_TFT_CS  22
 #define PIN_TFT_DC  21
-#define PIN_TFT_RST  4
 #define PIN_TFT_LED 16
 
 // ── Touch XPT2046 ─────────────────────────────────

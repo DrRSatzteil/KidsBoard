@@ -65,7 +65,7 @@ Display Pin    ESP32 Pin    Notes
 VCC        →   3.3V
 GND        →   GND
 CS         →   GPIO 22      Display chip select
-RESET      →   GPIO 4
+RESET      →   RST          Connect to ESP32 RST pin directly
 DC/RS      →   GPIO 21      Data/Command
 MOSI/SDI   →   GPIO 23      Shared SPI bus
 SCK/CLK    →   GPIO 18      Shared SPI bus
