@@ -2,7 +2,7 @@
 
 A tactile digital weekly planner for families, built with an ESP32, a 2.8" touch display, and RFID card login. Each family member gets their own RFID card to log in and check off their tasks for the week. Rewards are automatically calculated based on the weekly score.
 
-<img src="docs/box_print.png" width=20% height=20%>
+<img src="docs/box_print.png" width=45% height=45%>
 
 <img src="docs/home_screen.png" width=20% height=20%>
 
