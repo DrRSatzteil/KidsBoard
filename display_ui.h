@@ -138,7 +138,7 @@ void drawStatusBar(TFT_eSPI& tft, AppState& state) {
 
 // Avatar arrays per kid index
 // Order must match data.h:
-// kids[0]=Mila, kids[1]=Felix, kids[2]=Mama, kids[3]=Papa
+// kids[0]=Mila, kids[1]=Felix, kids[2]=Mum, kids[3]=Dad
 const uint16_t* AVATAR_DATA[] = {
   AVATAR_MILA,
   AVATAR_FELIX,
