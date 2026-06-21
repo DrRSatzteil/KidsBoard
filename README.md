@@ -1,6 +1,6 @@
 # KidsBoard – Family Weekly Planner
 
-![DrPi](tools/assets/drpi.png)
+![DrPi](tools/assets/drpi_normal.png)
 
 A tactile digital weekly planner for families, built with an ESP32, a 2.8" touch display, and RFID card login. Each family member gets their own RFID card to log in and check off their tasks for the week. Rewards are automatically calculated based on the weekly score.
 
