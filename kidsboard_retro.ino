@@ -4,33 +4,33 @@
 //  v2: WiFi via AP setup, Display LED via IO16
 // =====================================================
 
-#include <SPI.h>
-#include <TFT_eSPI.h>
-#include <MFRC522.h>
+#include "soc/rtc_cntl_reg.h"
+#include "soc/soc.h"
 #include <ArduinoJson.h>
-#include <SPIFFS.h>
-#include <WiFi.h>
-#include <Preferences.h>
 #include <ESPAsyncWebServer.h>
 #include <ElegantOTA.h>
+#include <MFRC522.h>
+#include <Preferences.h>
+#include <SPI.h>
+#include <SPIFFS.h>
+#include <TFT_eSPI.h>
+#include <WiFi.h>
 #include <esp_task_wdt.h>
-#include "soc/soc.h"
-#include "soc/rtc_cntl_reg.h"
 
 #include "config.h"
-#include "wifi_manager.h"
 #include "data.h"
 #include "display_ui.h"
 #include "rfid_reader.h"
 #include "webserver.h"
+#include "wifi_manager.h"
 
-#define PWM_CHANNEL    0
-#define PWM_FREQ    5000
-#define PWM_RES        8
-#define BRIGHT_FULL  255
-#define BRIGHT_DIM   128
-#define BAT_LOW       20   // % for dimmed display
-#define BAT_CRIT      10   // % for shutdown
+#define PWM_CHANNEL 0
+#define PWM_FREQ 5000
+#define PWM_RES 8
+#define BRIGHT_FULL 255
+#define BRIGHT_DIM 128
+#define BAT_LOW 20  // % for dimmed display
+#define BAT_CRIT 10 // % for shutdown
 
 // ── State ─────────────────────────────────────────
 AppState state;
@@ -43,16 +43,16 @@ unsigned long saveTimer = 0;
 // ── Battery status refresh ────────────────────────
 unsigned long lastBatRefresh = 0;
 unsigned long lastBatSample = 0;
-#define BAT_SAMPLE_MS   (5UL * 1000UL)   // Sample every 5 seconds
-#define BAT_REFRESH_MS  (60UL * 1000UL)  // Redraw status bar every 1 minute
+#define BAT_SAMPLE_MS (5UL * 1000UL)   // Sample every 5 seconds
+#define BAT_REFRESH_MS (60UL * 1000UL) // Redraw status bar every 1 minute
 
 // ── Hardware ──────────────────────────────────────
-TFT_eSPI       tft  = TFT_eSPI();
-MFRC522        rfid(PIN_RFID_CS, PIN_RFID_RST);
+TFT_eSPI tft = TFT_eSPI();
+MFRC522 rfid(PIN_RFID_CS, PIN_RFID_RST);
 AsyncWebServer server(80);
 
 // ── NTP in background ─────────────────────────────
-void ntpTask(void* parameter) {
+void ntpTask(void *parameter) {
   configTime(3600, 3600, "pool.ntp.org");
   struct tm ti;
   for (int i = 0; i < 10; i++) {
@@ -67,20 +67,20 @@ void ntpTask(void* parameter) {
 }
 
 // ── Brightness ────────────────────────────────────
-void setBrightness(int brightness) {
-  ledcWrite(PIN_TFT_LED, brightness);
-}
+void setBrightness(int brightness) { ledcWrite(PIN_TFT_LED, brightness); }
 
 // Returns the target brightness based on current battery level
 int getTargetBrightness() {
   int pct = readBatteryPercent();
-  if (pct < BAT_CRIT) return 0;
-  if (pct < BAT_LOW)  return BRIGHT_DIM;
+  if (pct < BAT_CRIT)
+    return 0;
+  if (pct < BAT_LOW)
+    return BRIGHT_DIM;
   return BRIGHT_FULL;
 }
 
 // Show low battery warning and enter deep sleep
-void handleCriticalBattery(TFT_eSPI& tft) {
+void handleCriticalBattery(TFT_eSPI &tft) {
   tft.fillScreen(TFT_BLACK);
   setBrightness(BRIGHT_DIM);
   tft.setTextFont(4);
@@ -113,12 +113,14 @@ int readBatteryPercent() {
   // Add new reading to rolling buffer
   batRolling[batRollingIdx] = analogRead(PIN_BAT_ADC);
   batRollingIdx = (batRollingIdx + 1) % BAT_SAMPLES;
-  if (batRollingIdx == 0) batRollingFilled = true;
+  if (batRollingIdx == 0)
+    batRollingFilled = true;
 
   // Average over filled samples
   int count = batRollingFilled ? BAT_SAMPLES : batRollingIdx;
   long sum = 0;
-  for (int i = 0; i < count; i++) sum += batRolling[i];
+  for (int i = 0; i < count; i++)
+    sum += batRolling[i];
   float raw = sum / (float)count;
 
   float voltage = (raw / 4095.0) * 3.3 * 2.0 * 1.117;
@@ -138,7 +140,7 @@ int readBatteryPercent() {
       lastPct = pct;
       lastVoltage = voltage;
     } else {
-      pct = lastPct;  // Suppress noise-induced increase
+      pct = lastPct; // Suppress noise-induced increase
     }
   } else {
     lastPct = pct;
@@ -151,7 +153,8 @@ int readBatteryPercent() {
 float readBatteryVoltage() {
   int count = batRollingFilled ? BAT_SAMPLES : max(1, batRollingIdx);
   long sum = 0;
-  for (int i = 0; i < count; i++) sum += batRolling[i];
+  for (int i = 0; i < count; i++)
+    sum += batRolling[i];
   float raw = sum / (float)count;
   return (raw / 4095.0) * 3.3 * 2.0 * 1.117;
 }
@@ -161,12 +164,14 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\n== KidsBoard booting ==");
 
+  randomSeed(analogRead(0) + millis());
+
   // PWM for backlight
   ledcAttach(PIN_TFT_LED, PWM_FREQ, PWM_RES);
   setBrightness(0);
 
   // ADC setup for battery measurement
-  analogSetAttenuation(ADC_11db);  // Allows reading up to ~3.3V
+  analogSetAttenuation(ADC_11db); // Allows reading up to ~3.3V
 
   // Pre-fill rolling average buffer at boot
   for (int i = 0; i < BAT_SAMPLES; i++) {
@@ -185,10 +190,7 @@ void setup() {
 
   // Watchdog
   esp_task_wdt_config_t wdt_config = {
-    .timeout_ms = 15000,
-    .idle_core_mask = 0,
-    .trigger_panic = false
-  };
+      .timeout_ms = 15000, .idle_core_mask = 0, .trigger_panic = false};
   esp_task_wdt_reconfigure(&wdt_config);
 
   // WiFi: try stored credentials, fall back to AP
@@ -228,7 +230,8 @@ void setup() {
     Serial.printf("RFID try %d failed, retry...\n", attempt + 1);
     delay(100);
   }
-  if (!rfidOk) Serial.println("RFID Init failed!");
+  if (!rfidOk)
+    Serial.println("RFID Init failed!");
   rfid.PCD_SetAntennaGain(rfid.RxGain_max);
   Serial.println("RFID ready");
 
@@ -277,7 +280,7 @@ void loop() {
   // Sample battery every 5 seconds to keep rolling average fresh
   if (millis() - lastBatSample > BAT_SAMPLE_MS) {
     lastBatSample = millis();
-    readBatteryPercent();  // Updates rolling buffer
+    readBatteryPercent(); // Updates rolling buffer
   }
 
   // Adjust brightness and check critical battery level
@@ -286,7 +289,8 @@ void loop() {
     int batPct = readBatteryPercent();
 
     // Critical: warn and shut down
-    if (batPct < BAT_CRIT) handleCriticalBattery(tft);
+    if (batPct < BAT_CRIT)
+      handleCriticalBattery(tft);
 
     // Adjust brightness to match battery level
     setBrightness(getTargetBrightness());
@@ -326,8 +330,10 @@ void loop() {
       if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
         String uid = "";
         for (byte i = 0; i < rfid.uid.size; i++) {
-          if (i > 0) uid += ":";
-          if (rfid.uid.uidByte[i] < 0x10) uid += "0";
+          if (i > 0)
+            uid += ":";
+          if (rfid.uid.uidByte[i] < 0x10)
+            uid += "0";
           uid += String(rfid.uid.uidByte[i], HEX);
         }
         uid.toUpperCase();
@@ -338,9 +344,10 @@ void loop() {
         if (ki >= 0 && ki < state.kidCount) {
           strlcpy(state.kids[ki].rfidUID, uid.c_str(), 16);
           saveData(state);
-          Serial.printf("RFID assigned: %s -> %s\n", uid.c_str(), state.kids[ki].name);
+          Serial.printf("RFID assigned: %s -> %s\n", uid.c_str(),
+                        state.kids[ki].name);
         }
-        state.rfidAssignUID     = uid;
+        state.rfidAssignUID = uid;
         state.rfidAssignPending = false;
         state.screen = SCREEN_HOME;
         rfidAssignShown = false;
@@ -368,7 +375,10 @@ void loop() {
   // Deep Sleep after 30 minutes
   if (state.screen == SCREEN_SCREENSAVER &&
       millis() - state.lastInteraction > DEEP_SLEEP_MS) {
-    for (int b = 255; b >= 0; b -= 8) { setBrightness(b); delay(8); }
+    for (int b = 255; b >= 0; b -= 8) {
+      setBrightness(b);
+      delay(8);
+    }
     setBrightness(0);
     esp_deep_sleep_start();
   }
@@ -383,7 +393,7 @@ void loop() {
     if (state.screen != SCREEN_HOME && state.activeKid >= 0) {
       if (millis() - state.lastInteraction > AUTO_LOGOUT_MS) {
         state.activeKid = -1;
-        state.screen    = SCREEN_HOME;
+        state.screen = SCREEN_HOME;
         drawHomeScreen(tft, state);
       }
     }

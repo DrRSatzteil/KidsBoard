@@ -53,6 +53,7 @@ KBWiFiMode startWiFi() {
   if (loadWiFiCredentials(ssid, pass)) {
     Serial.printf("Trying WiFi: %s\n", ssid.c_str());
     WiFi.mode(WIFI_STA);
+    WiFi.setHostname("kidsboard");
     WiFi.setAutoReconnect(true);
     WiFi.persistent(false);
     WiFi.setTxPower(WIFI_POWER_8_5dBm);

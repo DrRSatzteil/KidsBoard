@@ -2,34 +2,75 @@
 //  display_ui.h – All Screens + Touch Handlers
 // =====================================================
 #pragma once
-#include <TFT_eSPI.h>
 #include "config.h"
 #include "data.h"
 #include "retro_gfx.h"
+#include <TFT_eSPI.h>
+
+// Quiz Constants
+// ── Layout ───────────────────────────────────────
+#define QUIZ_HEADER_H     26
+#define QUIZ_PI_X         0
+#define QUIZ_PI_Y         QUIZ_HEADER_H   // 26
+#define QUIZ_PI_SRC_W     64
+#define QUIZ_PI_SRC_H     64
+#define QUIZ_PI_DRAW_W    128
+#define QUIZ_PI_DRAW_H    128
+#define QUIZ_PI_BOTTOM    (QUIZ_PI_Y + QUIZ_PI_DRAW_H)  // 154
+
+// BG-Offset: Boden bei Original-y=140, skaliert=280.
+// Dr. Pi Unterkante bei y=154. Dr. Pi hat 8px Luft unten.
+// Effektiver Boden-Screen-Y = 154 - 8*2 = 138... nein:
+// Wir wollen BG-Quellzeile 140 bei screenY = 154-16 = 138
+// → offset = 280 - 138 = 142
+#define QUIZ_BG_OFFSET    142
+
+// Buttons: y=158..289, Dots y=291..319
+// 4 Buttons: 4*(31+3)=136px → 158+136=294 → zu viel
+// Lösung: Buttons ab y=156, Höhe 30, Gap 2 → 4*(30+2)=128 → 156+128=284
+// Dots: 286..319 → passt!
+#define QUIZ_BTN_X        8
+#define QUIZ_BTN_W        224
+#define QUIZ_BTN_H        36
+#define QUIZ_BTN_GAP      2
+#define QUIZ_BTN_Y0       156
+
+#define QUIZ_BUBBLE_X     132
+#define QUIZ_BUBBLE_Y     (QUIZ_HEADER_H + 2)
+#define QUIZ_BUBBLE_W     106
+#define QUIZ_BUBBLE_H     124
+
+// ── Farben ────────────────────────────────────────
+#define QUIZ_COLOR_NORMAL   0x2945
+#define QUIZ_COLOR_CORRECT  0x07E0
+#define QUIZ_COLOR_WRONG    0xF800
+#define QUIZ_COLOR_BUBBLE   0xFFFF
+#define QUIZ_COLOR_HEADER   0x0841
 
 // ── Touch Calibration ─────────────────────────────
-#define TOUCH_CAL_DATA { 395, 3227, 305, 3361, 4 }
+#define TOUCH_CAL_DATA {395, 3227, 305, 3361, 4}
 uint16_t touchCalData[5] = TOUCH_CAL_DATA;
 
 // ── Helper Functions ──────────────────────────────
 
-void drawRoundRect(TFT_eSPI& tft, int x, int y, int w, int h,
-                   int r, uint16_t fill, uint16_t border = 0) {
+void drawRoundRect(TFT_eSPI &tft, int x, int y, int w, int h, int r,
+                   uint16_t fill, uint16_t border = 0) {
   tft.fillRoundRect(x, y, w, h, r, fill);
-  if (border) tft.drawRoundRect(x, y, w, h, r, border);
+  if (border)
+    tft.drawRoundRect(x, y, w, h, r, border);
 }
 
-void drawProgressBar(TFT_eSPI& tft, int x, int y, int w, int h,
-                     int pct, uint16_t color) {
-  tft.fillRoundRect(x, y, w, h, h/2, COLOR_BORDER);
+void drawProgressBar(TFT_eSPI &tft, int x, int y, int w, int h, int pct,
+                     uint16_t color) {
+  tft.fillRoundRect(x, y, w, h, h / 2, COLOR_BORDER);
   if (pct > 0) {
     int filled = max(1, (w * pct) / 100);
-    tft.fillRoundRect(x, y, filled, h, h/2, color);
+    tft.fillRoundRect(x, y, filled, h, h / 2, color);
   }
 }
 
-void centerText(TFT_eSPI& tft, const char* text,
-                int y, int size, uint16_t color, int screenW = 240) {
+void centerText(TFT_eSPI &tft, const char *text, int y, int size,
+                uint16_t color, int screenW = 240) {
   tft.setTextSize(size);
   tft.setTextColor(color, COLOR_BG);
   int tw = tft.textWidth(text);
@@ -39,22 +80,20 @@ void centerText(TFT_eSPI& tft, const char* text,
 
 // ── Back Arrow Button ─────────────────────────────
 
-void drawBackArrow(TFT_eSPI& tft, int x, int y, uint16_t color) {
-  tft.fillTriangle(x,      y + 5,
-                   x + 7,  y,
-                   x + 7,  y + 10,
-                   color);
+void drawBackArrow(TFT_eSPI &tft, int x, int y, uint16_t color) {
+  tft.fillTriangle(x, y + 5, x + 7, y, x + 7, y + 10, color);
   tft.fillRect(x + 7, y + 3, 10, 4, color);
 }
 
-void drawBackButton(TFT_eSPI& tft, int x, int y, int w, int h, uint16_t borderColor) {
+void drawBackButton(TFT_eSPI &tft, int x, int y, int w, int h,
+                    uint16_t borderColor) {
   drawRoundRect(tft, x, y, w, h, 5, COLOR_BG, borderColor);
   drawBackArrow(tft, x + (w - 17) / 2, y + (h - 10) / 2, borderColor);
 }
 
 // ── Draw Star ─────────────────────────────────────
 
-void drawStar(TFT_eSPI& tft, int cx, int cy, int r, uint16_t color) {
+void drawStar(TFT_eSPI &tft, int cx, int cy, int r, uint16_t color) {
   int rInner = (int)(r * 0.45f);
   int16_t px[10], py[10];
   for (int i = 0; i < 10; i++) {
@@ -64,20 +103,22 @@ void drawStar(TFT_eSPI& tft, int cx, int cy, int r, uint16_t color) {
     py[i] = cy + (int)(radius * sin(angle));
   }
   for (int i = 0; i < 10; i++) {
-    tft.fillTriangle(cx, cy, px[i], py[i], px[(i+1)%10], py[(i+1)%10], color);
+    tft.fillTriangle(cx, cy, px[i], py[i], px[(i + 1) % 10], py[(i + 1) % 10],
+                     color);
   }
 }
 
-int countActiveKids(AppState& state) {
+int countActiveKids(AppState &state) {
   int count = 0;
   for (int i = 0; i < state.kidCount; i++)
-    if (state.kids[i].active) count++;
+    if (state.kids[i].active)
+      count++;
   return count;
 }
 
 // ── Boot Screen ───────────────────────────────────
 
-void showBootScreen(TFT_eSPI& tft) {
+void showBootScreen(TFT_eSPI &tft) {
   tft.fillScreen(COLOR_BG);
   tft.setTextFont(2);
 
@@ -98,7 +139,7 @@ void showBootScreen(TFT_eSPI& tft) {
 }
 
 // ── Status Bar ────────────────────────────────────
-void drawStatusBar(TFT_eSPI& tft, AppState& state) {
+void drawStatusBar(TFT_eSPI &tft, AppState &state) {
   tft.fillRect(0, 298, 240, 22, 0x0841);
   tft.setTextFont(1);
 
@@ -108,17 +149,22 @@ void drawStatusBar(TFT_eSPI& tft, AppState& state) {
     tft.setTextColor(COLOR_SUCCESS, 0x0841);
     tft.print(state.showIP ? WiFi.localIP().toString().c_str() : "WiFi");
   } else if (state.apMode) {
-    tft.setTextColor(0xFD20, 0x0841);  // Orange for AP mode
-    tft.print(state.showIP ? WiFi.softAPIP().toString().c_str() : "AP: KidsBoard");
+    tft.setTextColor(0xFD20, 0x0841); // Orange for AP mode
+    tft.print(state.showIP ? WiFi.softAPIP().toString().c_str()
+                           : "AP: KidsBoard");
   }
 
-  // Battery right – tap to toggle voltage display. Remove this if you don't measure the battery level
+  // Battery right – tap to toggle voltage display. Remove this if you don't
+  // measure the battery level
   extern int readBatteryPercent();
   int batPct = readBatteryPercent();
   uint16_t batColor;
-  if (batPct > 50)      batColor = COLOR_SUCCESS;
-  else if (batPct > 20) batColor = 0xFFE0;
-  else                  batColor = TFT_RED;
+  if (batPct > 50)
+    batColor = COLOR_SUCCESS;
+  else if (batPct > 20)
+    batColor = 0xFFE0;
+  else
+    batColor = TFT_RED;
 
   char batBuf[12];
   if (state.showVoltage) {
@@ -139,20 +185,20 @@ void drawStatusBar(TFT_eSPI& tft, AppState& state) {
 // Avatar arrays per kid index
 // Order must match data.h:
 // kids[0]=Mila, kids[1]=Felix, kids[2]=Mum, kids[3]=Dad
-const uint16_t* AVATAR_DATA[] = {
-  AVATAR_MILA,
-  AVATAR_FELIX,
-  AVATAR_MAMA,
-  AVATAR_PAPA,
+const uint16_t *AVATAR_DATA[] = {
+    AVATAR_MILA,
+    AVATAR_FELIX,
+    AVATAR_MAMA,
+    AVATAR_PAPA,
 };
 
-void drawHomeScreen(TFT_eSPI& tft, AppState& state) {
+void drawHomeScreen(TFT_eSPI &tft, AppState &state) {
   // Background (auto day/night)
   drawBackgroundAuto(tft);
 
   // Header: dark panel at top
-  uint16_t HDR_BG  = 0x0841;
-  uint16_t ACCENT  = 0xFFE0;  // yellow
+  uint16_t HDR_BG = 0x0841;
+  uint16_t ACCENT = 0xFFE0; // yellow
   tft.fillRect(0, 0, 240, 22, HDR_BG);
   tft.setTextFont(1);
   tft.setTextSize(1);
@@ -174,12 +220,12 @@ void drawHomeScreen(TFT_eSPI& tft, AppState& state) {
   // RFID wave icon
   int cx = 120, cy = 60;
   tft.fillCircle(cx, cy, 4, ACCENT);
-  tft.drawCircle(cx, cy, 9,  ACCENT);
+  tft.drawCircle(cx, cy, 9, ACCENT);
   tft.drawCircle(cx, cy, 14, 0x8410);
 
   // "or select" label
   tft.setTextFont(1);
-  tft.setTextColor(0x2945);  // dark gray, no background
+  tft.setTextColor(0x2945); // dark gray, no background
   tft.setTextDatum(MC_DATUM);
   tft.drawString(STR_HOME_OR_SELECT, 120, 91);
   tft.setTextDatum(TL_DATUM);
@@ -194,7 +240,8 @@ void drawHomeScreen(TFT_eSPI& tft, AppState& state) {
 
     int btnIdx = 0;
     for (int i = 0; i < state.kidCount; i++) {
-      if (!state.kids[i].active) continue;
+      if (!state.kids[i].active)
+        continue;
       int by = by_start + btnIdx * (btnH + gap);
 
       // Button background
@@ -233,9 +280,10 @@ void drawHomeScreen(TFT_eSPI& tft, AppState& state) {
 
 // ── Planner Screen ────────────────────────────────
 
-void drawPlannerScreen(TFT_eSPI& tft, AppState& state) {
-  if (state.activeKid < 0) return;
-  Kid& kid = state.kids[state.activeKid];
+void drawPlannerScreen(TFT_eSPI &tft, AppState &state) {
+  if (state.activeKid < 0)
+    return;
+  Kid &kid = state.kids[state.activeKid];
 
   tft.fillScreen(COLOR_BG);
   tft.fillRect(0, 0, 240, 52, COLOR_CARD);
@@ -268,7 +316,8 @@ void drawPlannerScreen(TFT_eSPI& tft, AppState& state) {
     bool isActive = (d == state.activeDay);
     uint16_t tabBg = isActive ? COLOR_CARD : COLOR_BG;
     tft.fillRect(d * tabW, 52, tabW, 22, tabBg);
-    if (isActive) tft.fillRect(d * tabW, 72, tabW, 2, kid.color);
+    if (isActive)
+      tft.fillRect(d * tabW, 72, tabW, 2, kid.color);
 
     tft.setTextFont(1);
     tft.setTextColor(isActive ? kid.color : COLOR_MUTED, tabBg);
@@ -277,9 +326,11 @@ void drawPlannerScreen(TFT_eSPI& tft, AppState& state) {
     tft.print(DAY_SHORT[d]);
 
     // Green dot if all tasks done for this day
-    DayPlan& dp = kid.week[d];
+    DayPlan &dp = kid.week[d];
     int dayDone = 0;
-    for (int t = 0; t < dp.taskCount; t++) if (dp.tasks[t].done) dayDone++;
+    for (int t = 0; t < dp.taskCount; t++)
+      if (dp.tasks[t].done)
+        dayDone++;
     if (dayDone == dp.taskCount && dp.taskCount > 0)
       tft.fillCircle(d * tabW + tabW - 5, 57, 3, COLOR_SUCCESS);
   }
@@ -290,16 +341,15 @@ void drawPlannerScreen(TFT_eSPI& tft, AppState& state) {
   tft.print(DAY_LONG[state.activeDay]);
 
   // Task list
-  DayPlan& dp = kid.week[state.activeDay];
+  DayPlan &dp = kid.week[state.activeDay];
   int yStart = 102, rowH = 34;
 
   for (int t = 0; t < dp.taskCount; t++) {
     bool isDone = dp.tasks[t].done;
-    int  ty     = yStart + t * rowH;
+    int ty = yStart + t * rowH;
 
-    uint16_t rowBg = isDone
-      ? (uint16_t)((kid.color & 0xF7DE) >> 1)
-      : COLOR_CARD;
+    uint16_t rowBg =
+        isDone ? (uint16_t)((kid.color & 0xF7DE) >> 1) : COLOR_CARD;
     drawRoundRect(tft, 10, ty, 220, rowH - 4, 6, rowBg,
                   isDone ? kid.color : COLOR_BORDER);
 
@@ -315,15 +365,43 @@ void drawPlannerScreen(TFT_eSPI& tft, AppState& state) {
     }
 
     tft.setTextFont(2);
-    // Done tasks: dark text on light kid-color background = always good contrast
     tft.setTextColor(isDone ? 0x2945 : TFT_WHITE, rowBg);
-    tft.setCursor(48, ty + 9);
-    tft.print(dp.tasks[t].name);
+ 
+    if (taskHasQuiz(dp.tasks[t])) {
+      // Small purple Quiz-Badge right side of the button
+      int badgeX = 188;
+      int badgeY = ty + 7;
+      tft.fillRoundRect(badgeX, badgeY, 34, 18, 4,
+                        isDone ? 0x2945 : 0x300A);  // purple
+      tft.setTextFont(1);
+      tft.setTextColor(isDone ? 0x8410 : 0xC67A, isDone ? 0x2945 : 0x300A);
+      tft.setCursor(badgeX + 4, badgeY + 5);
+      tft.print("Quiz");
+ 
+      // Task-Name shorter so it doesn't overlap the badge
+      tft.setTextFont(2);
+      tft.setTextColor(isDone ? 0x2945 : TFT_WHITE, rowBg);
+      tft.setCursor(48, ty + 9);
+      // Shorten if necessary
+      char nameShort[32];
+      strlcpy(nameShort, dp.tasks[t].name, sizeof(nameShort));
+      while (tft.textWidth(nameShort) > 132 && strlen(nameShort) > 3) {
+        int l = strlen(nameShort);
+        nameShort[l-4]='.'; nameShort[l-3]='.';
+        nameShort[l-2]='.'; nameShort[l-1]='\0';
+      }
+      tft.print(nameShort);
+    } else {
+      tft.setCursor(48, ty + 9);
+      tft.print(dp.tasks[t].name);
+    }
   }
 
   // Daily progress bar at bottom
   int dayDone = 0;
-  for (int t = 0; t < dp.taskCount; t++) if (dp.tasks[t].done) dayDone++;
+  for (int t = 0; t < dp.taskCount; t++)
+    if (dp.tasks[t].done)
+      dayDone++;
   int dayPct = dp.taskCount > 0 ? (dayDone * 100) / dp.taskCount : 0;
 
   int barY = 294;
@@ -337,9 +415,10 @@ void drawPlannerScreen(TFT_eSPI& tft, AppState& state) {
 
 // ── Weekend / Reward Screen ───────────────────────
 
-void drawWeekendScreen(TFT_eSPI& tft, AppState& state) {
-  if (state.activeKid < 0) return;
-  Kid& kid = state.kids[state.activeKid];
+void drawWeekendScreen(TFT_eSPI &tft, AppState &state) {
+  if (state.activeKid < 0)
+    return;
+  Kid &kid = state.kids[state.activeKid];
 
   tft.fillScreen(COLOR_BG);
   drawBackButton(tft, 197, 8, 36, 24, COLOR_MUTED);
@@ -351,7 +430,7 @@ void drawWeekendScreen(TFT_eSPI& tft, AppState& state) {
   tft.print(kid.name);
 
   int total, done = getWeekScore(kid, total);
-  int pct   = total > 0 ? (done * 100) / total : 0;
+  int pct = total > 0 ? (done * 100) / total : 0;
   int stars = getStars(done, total);
 
   // Decorative circles
@@ -412,8 +491,10 @@ void drawWeekendScreen(TFT_eSPI& tft, AppState& state) {
       bool unlocked = (stars >= 5);
       tft.setTextColor(unlocked ? kid.color : COLOR_MUTED, COLOR_CARD);
       tft.setCursor(25, ry);
-      if (isMys && !unlocked) tft.print("???");
-      else                    tft.print(kid.rewards[r].name);
+      if (isMys && !unlocked)
+        tft.print("???");
+      else
+        tft.print(kid.rewards[r].name);
       tft.setTextColor(unlocked ? COLOR_SUCCESS : 0xF800, COLOR_CARD);
       int tbw = tft.textWidth(unlocked ? "OK" : "X");
       tft.setCursor(215 - tbw, ry);
@@ -446,7 +527,7 @@ void drawWeekendScreen(TFT_eSPI& tft, AppState& state) {
 
 struct Particle {
   int16_t x, y;
-  int8_t  vx, vy;
+  int8_t vx, vy;
   uint8_t size;
   uint16_t color;
   bool active;
@@ -454,21 +535,18 @@ struct Particle {
 
 #define NUM_PARTICLES 35
 
-void showCelebration(TFT_eSPI& tft, uint16_t kidColor, const char* kidName) {
-  uint16_t confettiColors[] = {
-    TFT_RED, TFT_GREEN, TFT_BLUE,
-    TFT_YELLOW, TFT_CYAN, TFT_MAGENTA,
-    0xFD20, 0xF81F
-  };
+void showCelebration(TFT_eSPI &tft, uint16_t kidColor, const char *kidName) {
+  uint16_t confettiColors[] = {TFT_RED,  TFT_GREEN,   TFT_BLUE, TFT_YELLOW,
+                               TFT_CYAN, TFT_MAGENTA, 0xFD20,   0xF81F};
 
   Particle particles[NUM_PARTICLES];
   for (int i = 0; i < NUM_PARTICLES; i++) {
-    particles[i].x      = random(20, 220);
-    particles[i].y      = random(-80, -4);
-    particles[i].vx     = random(-2, 3);
-    particles[i].vy     = random(2, 6);
-    particles[i].size   = random(2, 5);
-    particles[i].color  = confettiColors[random(8)];
+    particles[i].x = random(20, 220);
+    particles[i].y = random(-80, -4);
+    particles[i].vx = random(-2, 3);
+    particles[i].vy = random(2, 6);
+    particles[i].size = random(2, 5);
+    particles[i].color = confettiColors[random(8)];
     particles[i].active = true;
   }
 
@@ -500,7 +578,8 @@ void showCelebration(TFT_eSPI& tft, uint16_t kidColor, const char* kidName) {
   unsigned long start = millis();
   while (millis() - start < 3000) {
     for (int i = 0; i < NUM_PARTICLES; i++) {
-      if (!particles[i].active) continue;
+      if (!particles[i].active)
+        continue;
 
       int16_t oldX = particles[i].x;
       int16_t oldY = particles[i].y;
@@ -521,14 +600,17 @@ void showCelebration(TFT_eSPI& tft, uint16_t kidColor, const char* kidName) {
 
       // Don't draw over the modal
       int r = particles[i].size + 2;
-      bool oldOverModal = (oldX > 25 - r && oldX < 215 + r &&
-                           oldY > 108 - r && oldY < 212 + r);
-      bool newOverModal = (particles[i].x > 25 - r && particles[i].x < 215 + r &&
-                           particles[i].y > 108 - r && particles[i].y < 212 + r);
+      bool oldOverModal =
+          (oldX > 25 - r && oldX < 215 + r && oldY > 108 - r && oldY < 212 + r);
+      bool newOverModal =
+          (particles[i].x > 25 - r && particles[i].x < 215 + r &&
+           particles[i].y > 108 - r && particles[i].y < 212 + r);
 
-      if (!oldOverModal) tft.fillCircle(oldX, oldY, particles[i].size, COLOR_BG);
-      if (!newOverModal) tft.fillCircle(particles[i].x, particles[i].y,
-                                        particles[i].size, particles[i].color);
+      if (!oldOverModal)
+        tft.fillCircle(oldX, oldY, particles[i].size, COLOR_BG);
+      if (!newOverModal)
+        tft.fillCircle(particles[i].x, particles[i].y, particles[i].size,
+                       particles[i].color);
     }
     delay(33);
   }
@@ -539,30 +621,36 @@ void showCelebration(TFT_eSPI& tft, uint16_t kidColor, const char* kidName) {
 
 // Returns true if pixel (x,y) is sky according to mask
 bool isSky(int x, int y) {
-  if (y < SKY_MASK_Y_OFFSET) return true;
-  if (y >= SKY_MASK_Y_OFFSET + SKY_MASK_HEIGHT) return false;
+  if (y < SKY_MASK_Y_OFFSET)
+    return true;
+  if (y >= SKY_MASK_Y_OFFSET + SKY_MASK_HEIGHT)
+    return false;
   int row = y - SKY_MASK_Y_OFFSET;
   uint8_t b = pgm_read_byte(&SKY_MASK[row * SKY_MASK_WIDTH + x / 8]);
   return (b & (1 << (7 - x % 8))) != 0;
 }
 
 struct SSCloud {
-  float    x;
-  float    speed;
-  int      y;
-  float    scale;        // Scale factor applied to cloud width
-  uint16_t buf[CLOUD_W * CLOUD_H];  // Cloud pixels in RAM
+  float x;
+  float speed;
+  int y;
+  float scale;                     // Scale factor applied to cloud width
+  uint16_t buf[CLOUD_W * CLOUD_H]; // Cloud pixels in RAM
 };
 
 #define SS_NUM_CLOUDS 3
 SSCloud ssClouds[SS_NUM_CLOUDS];
 bool ssInitialized = false;
 
-void updateAllClouds(TFT_eSPI& tft, float oldX[SS_NUM_CLOUDS]);  // forward declaration
+void updateAllClouds(TFT_eSPI &tft,
+                     float oldX[SS_NUM_CLOUDS]); // forward declaration
 
-void initScreensaver(TFT_eSPI& tft) {
+void initScreensaver(TFT_eSPI &tft) {
   extern void setBrightness(int);
-  for (int b = 255; b >= 0; b -= 8) { setBrightness(b); delay(8); }
+  for (int b = 255; b >= 0; b -= 8) {
+    setBrightness(b);
+    delay(8);
+  }
 
   drawBackgroundAuto(tft);
 
@@ -572,18 +660,20 @@ void initScreensaver(TFT_eSPI& tft) {
   // Randomize cloud sizes, heights and speeds each time screensaver starts
   // Always one small, one medium, one large cloud – shuffled randomly
   // Y bands keep clouds in their own vertical lane to avoid overlap
-  int yBands[3][2] = { {5, 30}, {50, 90}, {100, 140} };
-  float scales[3] = { 1.0f, 1.5f, 2.0f };
+  int yBands[3][2] = {{5, 30}, {50, 90}, {100, 140}};
+  float scales[3] = {1.0f, 1.5f, 2.0f};
   // Fisher-Yates shuffle
   for (int i = 2; i > 0; i--) {
     int j = random(0, i + 1);
-    float tmp = scales[i]; scales[i] = scales[j]; scales[j] = tmp;
+    float tmp = scales[i];
+    scales[i] = scales[j];
+    scales[j] = tmp;
   }
 
   for (int i = 0; i < SS_NUM_CLOUDS; i++) {
     ssClouds[i].scale = scales[i];
-    ssClouds[i].y     = random(yBands[i][0], yBands[i][1]);
-    ssClouds[i].speed = 0.6f + random(0, 20) * 0.1f;          // 0.6 – 2.5
+    ssClouds[i].y = random(yBands[i][0], yBands[i][1]);
+    ssClouds[i].speed = 0.6f + random(0, 20) * 0.1f; // 0.6 – 2.5
     memcpy(ssClouds[i].buf, cloudBuf, CLOUD_W * CLOUD_H * 2);
   }
 
@@ -593,26 +683,31 @@ void initScreensaver(TFT_eSPI& tft) {
   }
 
   ssInitialized = true;
-  for (int b = 0; b <= 255; b += 8) { setBrightness(b); delay(8); }
+  for (int b = 0; b <= 255; b += 8) {
+    setBrightness(b);
+    delay(8);
+  }
 }
 
 // Redraw only the X-strip affected by each cloud movement
 // Much faster than redrawing all rows – prevents lag and keeps touch responsive
-void updateAllClouds(TFT_eSPI& tft, float oldX[SS_NUM_CLOUDS]) {
+void updateAllClouds(TFT_eSPI &tft, float oldX[SS_NUM_CLOUDS]) {
   uint16_t lineBuf[240];
 
   for (int i = 0; i < SS_NUM_CLOUDS; i++) {
     int nx = (int)ssClouds[i].x;
     int ox = (int)oldX[i];
-    int w  = CLOUD_W * ssClouds[i].scale;
+    int w = CLOUD_W * ssClouds[i].scale;
 
     // X range: union of old and new position
     int minX = max(0, min(ox, nx));
     int maxX = min(240, max(ox + w, nx + w));
-    if (minX >= maxX) continue;
+    if (minX >= maxX)
+      continue;
 
     for (int sy = ssClouds[i].y; sy < ssClouds[i].y + CLOUD_H; sy++) {
-      if (sy < 0 || sy >= 320) continue;
+      if (sy < 0 || sy >= 320)
+        continue;
 
       // Fill strip with background
       for (int x = minX; x < maxX; x++) {
@@ -625,10 +720,13 @@ void updateAllClouds(TFT_eSPI& tft, float oldX[SS_NUM_CLOUDS]) {
       int cy = sy - ssClouds[i].y;
       for (int cx = 0; cx < w; cx++) {
         int sx = nx + cx;
-        if (sx < minX || sx >= maxX || sx < 0 || sx >= 240) continue;
-        if (!isSky(sx, sy)) continue;  // mask: skip tree pixels
+        if (sx < minX || sx >= maxX || sx < 0 || sx >= 240)
+          continue;
+        if (!isSky(sx, sy))
+          continue; // mask: skip tree pixels
         int srcX = cx / ssClouds[i].scale;
-        if (srcX >= CLOUD_W) srcX = CLOUD_W - 1;
+        if (srcX >= CLOUD_W)
+          srcX = CLOUD_W - 1;
         lineBuf[sx - minX] = ssClouds[i].buf[cy * CLOUD_W + srcX];
       }
 
@@ -641,9 +739,9 @@ void updateAllClouds(TFT_eSPI& tft, float oldX[SS_NUM_CLOUDS]) {
 #define SS_NUM_STARS 25
 struct SSStar {
   uint8_t x, y;
-  uint8_t brightness;  // 0-255
-  int8_t  direction;   // +1 or -1 (fade in/out)
-  uint8_t speed;       // fade speed
+  uint8_t brightness; // 0-255
+  int8_t direction;   // +1 or -1 (fade in/out)
+  uint8_t speed;      // fade speed
 };
 SSStar ssStars[SS_NUM_STARS];
 bool ssStarsInitialized = false;
@@ -658,17 +756,17 @@ void initStars() {
       attempts++;
     } while (!isSky(ssStars[i].x, ssStars[i].y) && attempts < 20);
     ssStars[i].brightness = random(0, 255);
-    ssStars[i].direction  = random(2) ? 1 : -1;
-    ssStars[i].speed      = random(3, 12);
+    ssStars[i].direction = random(2) ? 1 : -1;
+    ssStars[i].speed = random(3, 12);
   }
   ssStarsInitialized = true;
 }
 
 // ── Shooting star ────────────────────────────────────
 struct ShootingStar {
-  int  startX, startY;  // origin
-  int  len;             // trail length
-  int  step;            // current step (head is at startX+step, startY+step)
+  int startX, startY; // origin
+  int len;            // trail length
+  int step;           // current step (head is at startX+step, startY+step)
   bool active;
 };
 ShootingStar shootingStar = {0, 0, 0, 0, false};
@@ -681,7 +779,7 @@ uint16_t shootingStarColor(uint8_t bri) {
   return ((uint16_t)v5 << 11) | ((uint16_t)v6 << 5) | v5;
 }
 
-void updateShootingStar(TFT_eSPI& tft) {
+void updateShootingStar(TFT_eSPI &tft) {
   unsigned long now = millis();
 
   // Randomly trigger ~every 60s
@@ -699,19 +797,25 @@ void updateShootingStar(TFT_eSPI& tft) {
     }
   }
 
-  if (!shootingStar.active) return;
+  if (!shootingStar.active)
+    return;
 
-  int totalSteps = shootingStar.len * 2;  // move across screen + fade out
+  int totalSteps = shootingStar.len * 2; // move across screen + fade out
 
   // Draw trail – fades to background color so no explicit erase needed
-  float timeFade = 1.0f - max(0.0f, (float)(shootingStar.step - shootingStar.len) / (float)shootingStar.len);
+  float timeFade =
+      1.0f - max(0.0f, (float)(shootingStar.step - shootingStar.len) /
+                           (float)shootingStar.len);
   for (int i = 0; i < shootingStar.len; i++) {
     int trailStep = shootingStar.step - i;
-    if (trailStep < 0) continue;
+    if (trailStep < 0)
+      continue;
     int px = shootingStar.startX + trailStep;
     int py = shootingStar.startY + trailStep;
-    if (px < 0 || px >= 240 || py < 0 || py >= 320) continue;
-    if (!isSky(px, py)) continue;
+    if (px < 0 || px >= 240 || py < 0 || py >= 320)
+      continue;
+    if (!isSky(px, py))
+      continue;
     float trailFade = (float)(shootingStar.len - i) / shootingStar.len;
     uint8_t bri = (uint8_t)(255 * trailFade * timeFade);
     if (bri >= 0) {
@@ -719,24 +823,28 @@ void updateShootingStar(TFT_eSPI& tft) {
       uint16_t bg = getBgPixel(px, py);
       bg = ((bg & 0xFF) << 8) | (bg >> 8);
       uint8_t bgR = ((bg >> 11) & 0x1F) << 3;
-      uint8_t bgG = ((bg >> 5)  & 0x3F) << 2;
-      uint8_t bgB = ((bg)       & 0x1F) << 3;
+      uint8_t bgG = ((bg >> 5) & 0x3F) << 2;
+      uint8_t bgB = ((bg) & 0x1F) << 3;
       uint8_t r = (bri * 255 + (255 - bri) * bgR) / 255;
       uint8_t g = (bri * 255 + (255 - bri) * bgG) / 255;
       uint8_t b = (bri * min(255, bri + 30) + (255 - bri) * bgB) / 255;
-      uint16_t color = (((uint16_t)(r>>3)) << 11) | (((uint16_t)(g>>2)) << 5) | (b>>3);
+      uint16_t color =
+          (((uint16_t)(r >> 3)) << 11) | (((uint16_t)(g >> 2)) << 5) | (b >> 3);
       tft.drawPixel(px, py, color);
     }
   }
 
   shootingStar.step++;
-  if (shootingStar.step > totalSteps) shootingStar.active = false;
+  if (shootingStar.step > totalSteps)
+    shootingStar.active = false;
 }
 
-void drawStarFrame(TFT_eSPI& tft) {
-  if (!ssStarsInitialized) initStars();
+void drawStarFrame(TFT_eSPI &tft) {
+  if (!ssStarsInitialized)
+    initStars();
   for (int i = 0; i < SS_NUM_STARS; i++) {
-    if (!isSky(ssStars[i].x, ssStars[i].y)) continue;
+    if (!isSky(ssStars[i].x, ssStars[i].y))
+      continue;
 
     // Erase old star with background pixel
     // getBgPixel returns pre-swapped value (for pushImage),
@@ -745,15 +853,25 @@ void drawStarFrame(TFT_eSPI& tft) {
     nightBg = ((nightBg & 0xFF) << 8) | (nightBg >> 8);
     tft.drawPixel(ssStars[i].x, ssStars[i].y, nightBg);
     // Also erase cross arms
-    if (ssStars[i].x > 0)   tft.drawPixel(ssStars[i].x-1, ssStars[i].y,   nightBg);
-    if (ssStars[i].x < 239) tft.drawPixel(ssStars[i].x+1, ssStars[i].y,   nightBg);
-    if (ssStars[i].y > 0)   tft.drawPixel(ssStars[i].x,   ssStars[i].y-1, nightBg);
-    if (ssStars[i].y < 319) tft.drawPixel(ssStars[i].x,   ssStars[i].y+1, nightBg);
+    if (ssStars[i].x > 0)
+      tft.drawPixel(ssStars[i].x - 1, ssStars[i].y, nightBg);
+    if (ssStars[i].x < 239)
+      tft.drawPixel(ssStars[i].x + 1, ssStars[i].y, nightBg);
+    if (ssStars[i].y > 0)
+      tft.drawPixel(ssStars[i].x, ssStars[i].y - 1, nightBg);
+    if (ssStars[i].y < 319)
+      tft.drawPixel(ssStars[i].x, ssStars[i].y + 1, nightBg);
 
     // Update brightness
     int bv = ssStars[i].brightness + ssStars[i].direction * ssStars[i].speed;
-    if (bv >= 255) { bv = 255; ssStars[i].direction = -1; }
-    if (bv <= 0)   { bv = 0;   ssStars[i].direction =  1; }
+    if (bv >= 255) {
+      bv = 255;
+      ssStars[i].direction = -1;
+    }
+    if (bv <= 0) {
+      bv = 0;
+      ssStars[i].direction = 1;
+    }
     ssStars[i].brightness = (uint8_t)bv;
 
     // Star color: white-blue tint
@@ -764,16 +882,20 @@ void drawStarFrame(TFT_eSPI& tft) {
 
     // Bright stars get a small cross
     if (ssStars[i].brightness > 180) {
-      if (ssStars[i].x > 0)   tft.drawPixel(ssStars[i].x-1, ssStars[i].y,   starColor);
-      if (ssStars[i].x < 239) tft.drawPixel(ssStars[i].x+1, ssStars[i].y,   starColor);
-      if (ssStars[i].y > 0)   tft.drawPixel(ssStars[i].x,   ssStars[i].y-1, starColor);
-      if (ssStars[i].y < 319) tft.drawPixel(ssStars[i].x,   ssStars[i].y+1, starColor);
+      if (ssStars[i].x > 0)
+        tft.drawPixel(ssStars[i].x - 1, ssStars[i].y, starColor);
+      if (ssStars[i].x < 239)
+        tft.drawPixel(ssStars[i].x + 1, ssStars[i].y, starColor);
+      if (ssStars[i].y > 0)
+        tft.drawPixel(ssStars[i].x, ssStars[i].y - 1, starColor);
+      if (ssStars[i].y < 319)
+        tft.drawPixel(ssStars[i].x, ssStars[i].y + 1, starColor);
     }
   }
   updateShootingStar(tft);
 }
 
-void drawScreensaverFrame(TFT_eSPI& tft) {
+void drawScreensaverFrame(TFT_eSPI &tft) {
   // Re-initialize if day/night mode changed
   static bool lastNight = false;
   bool night = isNightTime();
@@ -796,10 +918,12 @@ void drawScreensaverFrame(TFT_eSPI& tft) {
   } else {
     // Day mode: moving clouds
     float oldX[SS_NUM_CLOUDS];
-    for (int i = 0; i < SS_NUM_CLOUDS; i++) oldX[i] = ssClouds[i].x;
+    for (int i = 0; i < SS_NUM_CLOUDS; i++)
+      oldX[i] = ssClouds[i].x;
     for (int i = 0; i < SS_NUM_CLOUDS; i++) {
       ssClouds[i].x += ssClouds[i].speed;
-      if (ssClouds[i].x > 240) ssClouds[i].x = -(float)(CLOUD_W * ssClouds[i].scale);
+      if (ssClouds[i].x > 240)
+        ssClouds[i].x = -(float)(CLOUD_W * ssClouds[i].scale);
     }
     updateAllClouds(tft, oldX);
   }
@@ -808,18 +932,408 @@ void drawScreensaverFrame(TFT_eSPI& tft) {
 void stopScreensaver() {
   extern void setBrightness(int);
   // Fade out – home screen is drawn while display is dark
-  for (int b = 255; b >= 0; b -= 8) { setBrightness(b); delay(8); }
+  for (int b = 255; b >= 0; b -= 8) {
+    setBrightness(b);
+    delay(8);
+  }
   ssInitialized = false;
   // Fade in happens AFTER drawHomeScreen in the touch handler
 }
 
+// ── Quiz Screens ───────────────────────
+
+// ── BG-Line-Cache for quick drawing ────────
+// Reads a complete BG line (with offset) into a buffer.
+// Buffer must be 240 uint16_t large.
+// IMPORTANT: returns pre-swapped values (directly for pushImage).
+void fillQuizBgLine(uint16_t* buf, int screenY) {
+  int bgY = (screenY + QUIZ_BG_OFFSET) / 2;
+  if (bgY < 0)    bgY = 0;
+  if (bgY >= BG_H) bgY = BG_H - 1;
+  const uint16_t* bg = isNightTime() ? BG_NIGHT : BG_DAY;
+  // Load complete source row into RAM (fast, one memcpy_P)
+  uint16_t rowBuf[BG_W];
+  memcpy_P(rowBuf, &bg[bgY * BG_W], BG_W * 2);
+  // 2x scaled to 240px
+  for (int x = 0; x < 240; x++) {
+    buf[x] = rowBuf[x / 2];
+  }
+}
+
+// ── Draw BG-Stripes ─────────────────
+void drawQuizBackground(TFT_eSPI& tft) {
+  uint16_t lineBuf[240];
+  for (int screenY = QUIZ_PI_Y; screenY < QUIZ_PI_BOTTOM; screenY++) {
+    fillQuizBgLine(lineBuf, screenY);
+    tft.pushImage(0, screenY, 240, 1, lineBuf);
+  }
+}
+
+// ── Draw Dr. Pi 2x scaled on shifted BG ────────
+void drawDrPiScaled(TFT_eSPI& tft, const uint16_t* sprite, int dx, int dy) {
+  uint16_t lineBuf[QUIZ_PI_DRAW_W];
+  uint16_t bgLine[240];
+
+  for (int sy = 0; sy < QUIZ_PI_SRC_H; sy++) {
+    for (int rep = 0; rep < 2; rep++) {
+      int screenY = dy + sy * 2 + rep;
+      if (screenY < 0 || screenY >= 320) continue;
+
+      // BG-Line once loaded (fast)
+      fillQuizBgLine(bgLine, screenY);
+
+      for (int sx = 0; sx < QUIZ_PI_SRC_W; sx++) {
+        uint16_t color = pgm_read_word(&sprite[sy * QUIZ_PI_SRC_W + sx]);
+        if (color == 0x0001) {
+          // Transparency: BG-Pixel from pre-loaded buffer
+          // bgLine is pre-swapped, sprite-Pixel also → consistent
+          color = bgLine[dx + sx * 2];
+        }
+        lineBuf[sx * 2]     = color;
+        lineBuf[sx * 2 + 1] = color;
+      }
+      tft.pushImage(dx, screenY, QUIZ_PI_DRAW_W, 1, lineBuf);
+    }
+  }
+}
+
+// ── Word wrap ─────────────────────────────────────
+int drawWrappedText(TFT_eSPI& tft, const char* text,
+                    int x, int y, int maxW,
+                    uint8_t font, uint16_t color, uint16_t bg) {
+  tft.setTextFont(font);
+  tft.setTextColor(color, bg);
+  int lineH = tft.fontHeight(font) + 2;
+  int spaceW = tft.textWidth(" ");
+  char buf[MAX_QUESTION_LEN];
+  strlcpy(buf, text, sizeof(buf));
+  int cx = x, cy = y;
+  char* word = strtok(buf, " ");
+  while (word) {
+    int ww = tft.textWidth(word);
+    if (cx + ww > x + maxW && cx > x) { cx = x; cy += lineH; }
+
+    if (ww > maxW) {
+      // Word is wider than the whole line – hard break
+      char tmp[MAX_QUESTION_LEN];
+      strlcpy(tmp, word, sizeof(tmp));
+      int len = strlen(tmp);
+      int cut = len;
+      // Trim until it fits
+      while (cut > 1 && tft.textWidth(tmp) > maxW) {
+        cut--;
+        tmp[cut] = '\0';
+      }
+      tft.setCursor(cx, cy);
+      tft.print(tmp);
+      // Rest of the word on next line
+      cx = x;
+      cy += lineH;
+      tft.setCursor(cx, cy);
+      tft.print(word + cut);
+      cx += tft.textWidth(word + cut) + spaceW;
+    } else {
+      tft.setCursor(cx, cy);
+      tft.print(word);
+      cx += ww + spaceW;
+    }
+    word = strtok(nullptr, " ");
+  }
+  return cy + lineH;
+}
+
+// ── Speech bubble ───────────────────────────────────
+void drawSpeechBubble(TFT_eSPI& tft, int x, int y, int w, int h) {
+  tft.fillRoundRect(x, y, w, h, 8, QUIZ_COLOR_BUBBLE);
+  tft.drawRoundRect(x, y, w, h, 8, TFT_BLACK);
+  tft.drawRoundRect(x+1, y+1, w-2, h-2, 7, 0xC618);
+  int ty = y + 24;
+  tft.fillTriangle(x, ty, x, ty+12, x-10, ty+6, QUIZ_COLOR_BUBBLE);
+  tft.drawLine(x, ty, x-10, ty+6, TFT_BLACK);
+  tft.drawLine(x-10, ty+6, x, ty+12, TFT_BLACK);
+}
+
+// ── Answer button ────────────────────────────────
+void drawAnswerButton(TFT_eSPI& tft, int index, const char* text,
+                      uint16_t bgColor, uint16_t textColor, uint16_t kidColor) {
+  static const char labels[] = "ABCD";
+  int y = QUIZ_BTN_Y0 + index * (QUIZ_BTN_H + QUIZ_BTN_GAP);
+  tft.fillRoundRect(QUIZ_BTN_X, y, QUIZ_BTN_W, QUIZ_BTN_H, 5, bgColor);
+  uint16_t borderColor = (bgColor == QUIZ_COLOR_NORMAL) ? kidColor : textColor;
+  tft.drawRoundRect(QUIZ_BTN_X, y, QUIZ_BTN_W, QUIZ_BTN_H, 5, borderColor);
+  uint16_t badgeBg = (bgColor == QUIZ_COLOR_NORMAL) ? kidColor : textColor;
+  tft.fillRoundRect(QUIZ_BTN_X + 4, y + 3, 22, 24, 4, badgeBg);
+  tft.setTextFont(2);
+  tft.setTextColor(bgColor, badgeBg);
+  char lbl[2] = { labels[index], 0 };
+  int lw = tft.textWidth(lbl);
+  tft.setCursor(QUIZ_BTN_X + 4 + (22 - lw) / 2, y + 8);
+  tft.print(lbl);
+  // Answer text – two lines if needed
+  tft.setTextFont(1);
+  tft.setTextColor(textColor, bgColor);
+  int maxTW = QUIZ_BTN_W - 38;
+  String txt = String(text);
+  if (tft.textWidth(text) <= maxTW) {
+    // Single line
+    tft.setCursor(QUIZ_BTN_X + 32, y + (QUIZ_BTN_H - tft.fontHeight(1)) / 2);
+    tft.print(txt);
+  } else {
+    // Two lines: at the last space before the middle
+    int splitPos = txt.length() / 2;
+    // Search for the next space
+    int left  = txt.lastIndexOf(' ', splitPos);
+    int right = txt.indexOf(' ', splitPos);
+    if (left < 0 && right < 0) left = splitPos;  // no space → hard break
+    else if (left < 0)  left = right;
+    else if (right >= 0 && (splitPos - left) > (right - splitPos)) left = right;
+    String line1 = txt.substring(0, left);
+    String line2 = txt.substring(left + 1);
+    // Trim if line2 is still too long
+    while (tft.textWidth(line2.c_str()) > maxTW && line2.length() > 3) {
+      line2 = line2.substring(0, line2.length() - 4) + "...";
+    }
+    int lineH = tft.fontHeight(1);
+    int totalH = lineH * 2 + 2;
+    int startY = y + (QUIZ_BTN_H - totalH) / 2;
+    tft.setCursor(QUIZ_BTN_X + 32, startY);
+    tft.print(line1);
+    tft.setCursor(QUIZ_BTN_X + 32, startY + lineH + 2);
+    tft.print(line2);
+  }
+}
+
+// ── Redraw all buttons ─────────────────────
+void redrawAnswerButtons(TFT_eSPI& tft, AppState& state) {
+  if (state.quizCurrentQuestion >= state.quizQuestionCount) return;
+  QuizQuestion& q = state.quizQuestions[state.quizCurrentQuestion];
+  uint16_t kidColor = (state.quizKid >= 0)
+                      ? state.kids[state.quizKid].color : 0x4ecdc4;
+  for (int i = 0; i < 4; i++) {
+    uint16_t bg = QUIZ_COLOR_NORMAL, fg = TFT_WHITE;
+    if (state.quizShowResult) {
+      if (i == (int)q.correctIndex)           { bg = QUIZ_COLOR_CORRECT; fg = TFT_WHITE; }
+      else if (i == state.quizSelectedAnswer) { bg = QUIZ_COLOR_WRONG;   fg = TFT_WHITE; }
+    }
+    drawAnswerButton(tft, i, q.answers[i].text, bg, fg, kidColor);
+  }
+}
+
+// ── Quiz Screen (complete) ─────────────────────
+void drawQuizScreen(TFT_eSPI& tft, AppState& state) {
+  if (state.quizCurrentQuestion >= state.quizQuestionCount) return;
+  QuizQuestion& q = state.quizQuestions[state.quizCurrentQuestion];
+  uint16_t kidColor = (state.quizKid >= 0)
+                      ? state.kids[state.quizKid].color : 0x4ecdc4;
+
+  tft.fillScreen(COLOR_BG);
+
+  // Header
+  tft.fillRect(0, 0, 240, QUIZ_HEADER_H, QUIZ_COLOR_HEADER);
+  drawBackButton(tft, 4, 3, 30, 20, COLOR_MUTED);
+  tft.setTextFont(1);
+  tft.setTextColor(0xFFE0, QUIZ_COLOR_HEADER);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString("Dr. Pi fragt...", 130, 13);
+  tft.setTextDatum(TL_DATUM);
+  char counterBuf[10];
+  snprintf(counterBuf, sizeof(counterBuf), "%d/%d",
+           state.quizCurrentQuestion + 1, state.quizQuestionCount);
+  tft.setTextColor(COLOR_MUTED, QUIZ_COLOR_HEADER);
+  int cw = tft.textWidth(counterBuf);
+  tft.setCursor(236 - cw, 9);
+  tft.print(counterBuf);
+
+  // BG + Dr. Pi
+  drawQuizBackground(tft);
+  const uint16_t* sprite = (state.quizShowResult &&
+      state.quizSelectedAnswer == (int)q.correctIndex)
+      ? DR_PI_HAPPY : DR_PI;
+  drawDrPiScaled(tft, sprite, QUIZ_PI_X, QUIZ_PI_Y);
+
+  // Sprechblase
+  drawSpeechBubble(tft, QUIZ_BUBBLE_X, QUIZ_BUBBLE_Y,
+                   QUIZ_BUBBLE_W, QUIZ_BUBBLE_H);
+  drawWrappedText(tft, q.question,
+                  QUIZ_BUBBLE_X + 8, QUIZ_BUBBLE_Y + 8,
+                  QUIZ_BUBBLE_W - 16,
+                  1, TFT_BLACK, QUIZ_COLOR_BUBBLE);
+
+  // Buttons
+  tft.fillRect(0, QUIZ_BTN_Y0 - 2, 240,
+               4 * (QUIZ_BTN_H + QUIZ_BTN_GAP) + 4, QUIZ_COLOR_HEADER);
+  redrawAnswerButtons(tft, state);
+
+}
+
+// ── Feedback (only changes) ─────────────────────
+void drawQuizFeedback(TFT_eSPI& tft, AppState& state) {
+  if (state.quizCurrentQuestion >= state.quizQuestionCount) return;
+  QuizQuestion& q = state.quizQuestions[state.quizCurrentQuestion];
+  redrawAnswerButtons(tft, state);
+  if (state.quizSelectedAnswer == (int)q.correctIndex) {
+    drawQuizBackground(tft);
+    drawDrPiScaled(tft, DR_PI_HAPPY, QUIZ_PI_X, QUIZ_PI_Y);
+  } else {
+    drawQuizBackground(tft);
+    drawDrPiScaled(tft, DR_PI_SKEPTICAL, QUIZ_PI_X, QUIZ_PI_Y);
+  }
+}
+
+// ── Quiz Complete Screen ──────────────────────────
+void drawQuizCompleteScreen(TFT_eSPI& tft, AppState& state) {
+  uint16_t kidColor = (state.quizKid >= 0)
+                      ? state.kids[state.quizKid].color : 0x4ecdc4;
+  tft.fillScreen(COLOR_BG);
+  tft.fillRect(0, 0, 240, QUIZ_HEADER_H, QUIZ_COLOR_HEADER);
+  drawQuizBackground(tft);
+  drawDrPiScaled(tft, DR_PI_HAPPY, (240 - QUIZ_PI_DRAW_W) / 2, QUIZ_PI_Y);
+
+  int cardY = QUIZ_PI_BOTTOM + 4;
+  tft.fillRoundRect(10, cardY, 220, 148, 10, QUIZ_COLOR_HEADER);
+  tft.drawRoundRect(10, cardY, 220, 148, 10, kidColor);
+
+  tft.setTextFont(4);
+  tft.setTextColor(0xFFE0, QUIZ_COLOR_HEADER);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString(STR_QUIZ_SUPER, 120, cardY + 12);
+  tft.setTextFont(2);
+  tft.setTextColor(TFT_WHITE, QUIZ_COLOR_HEADER);
+  char buf[48];
+  if (state.quizCorrectCount == state.quizQuestionCount)
+    snprintf(buf, sizeof(buf), STR_QUIZ_CORRECT_ALL, state.quizQuestionCount);
+  else
+    snprintf(buf, sizeof(buf), STR_QUIZ_CORRECT_SOME,
+           state.quizCorrectCount, state.quizQuestionCount);
+  tft.drawString(buf, 120, cardY + 40);
+  tft.setTextDatum(TL_DATUM);
+
+  int starR = 9, starSpacing = 30;
+  int starStartX = 120 - 2 * starSpacing;
+  // Stars based on quizCorrectCount
+  int stars = state.quizQuestionCount > 0
+              ? (state.quizCorrectCount * 5) / state.quizQuestionCount
+              : 0;
+  // Only draw the earned stars
+  for (int i = 0; i < 5; i++)
+    drawStar(tft, starStartX + i * starSpacing, cardY + 72, starR,
+            i < stars ? kidColor : 0x2945);  // filled or dark
+
+  if (state.quizCorrectCount == state.quizQuestionCount) {
+    tft.fillRoundRect(40, cardY + 92, 160, 22, 6, QUIZ_COLOR_CORRECT);
+    tft.setTextFont(1);
+    tft.setTextColor(TFT_WHITE, QUIZ_COLOR_CORRECT);
+    tft.setTextDatum(MC_DATUM);
+    tft.drawString(STR_QUIZ_TASK_DONE, 120, cardY + 103);
+  } else {
+    tft.fillRoundRect(40, cardY + 92, 160, 22, 6, 0xF800);
+    tft.setTextFont(1);
+    tft.setTextColor(TFT_WHITE, 0xF800);
+    tft.setTextDatum(MC_DATUM);
+    tft.drawString(STR_QUIZ_TRY_AGAIN, 120, cardY + 103);
+  }
+
+  tft.fillRoundRect(70, cardY + 120, 100, 22, 6, COLOR_CARD);
+  tft.drawRoundRect(70, cardY + 120, 100, 22, 6, kidColor);
+  tft.setTextFont(1);
+  tft.setTextColor(kidColor, COLOR_CARD);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString(STR_QUIZ_NEXT, 120, cardY + 131);
+  tft.setTextDatum(TL_DATUM);
+}
+
+// ── Already Done / Reset Screen ──────────────────
+void drawQuizAlreadyDoneScreen(TFT_eSPI& tft, AppState& state) {
+  uint16_t kidColor = (state.quizKid >= 0)
+                      ? state.kids[state.quizKid].color : 0x4ecdc4;
+  tft.fillScreen(COLOR_BG);
+  tft.fillRect(0, 0, 240, QUIZ_HEADER_H, QUIZ_COLOR_HEADER);
+  drawBackButton(tft, 4, 3, 30, 20, COLOR_MUTED);
+  drawQuizBackground(tft);
+  drawDrPiScaled(tft, DR_PI_HAPPY, (240 - QUIZ_PI_DRAW_W) / 2, QUIZ_PI_Y);
+
+  int cardY = QUIZ_PI_BOTTOM + 4;
+  tft.fillRoundRect(10, cardY, 220, 122, 10, QUIZ_COLOR_HEADER);
+  tft.drawRoundRect(10, cardY, 220, 122, 10, kidColor);
+
+  tft.setTextFont(2);
+  tft.setTextColor(QUIZ_COLOR_CORRECT, QUIZ_COLOR_HEADER);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString(STR_QUIZ_ALREADY_DONE, 120, cardY + 12);
+  tft.setTextFont(1);
+  tft.setTextColor(COLOR_MUTED, QUIZ_COLOR_HEADER);
+  tft.drawString(STR_QUIZ_WHAT_TODO, 120, cardY + 32);
+  tft.setTextDatum(TL_DATUM);
+
+  drawRoundRect(tft, 20, cardY + 48, 200, 30, 6, COLOR_CARD, kidColor);
+  tft.setTextFont(1);
+  tft.setTextColor(kidColor, COLOR_CARD);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString(STR_QUIZ_PLAY_AGAIN, 120, cardY + 62);
+
+  drawRoundRect(tft, 20, cardY + 84, 200, 30, 6, COLOR_CARD, COLOR_MUTED);
+  tft.setTextColor(COLOR_MUTED, COLOR_CARD);
+  tft.drawString(STR_QUIZ_RESET_TASK, 120, cardY + 98);
+  tft.setTextDatum(TL_DATUM);
+}
+
+// ── No Questions Screen ───────────────────────────
+void drawQuizNoQuestionsScreen(TFT_eSPI& tft, AppState& state) {
+  tft.fillScreen(COLOR_BG);
+  tft.fillRect(0, 0, 240, QUIZ_HEADER_H, QUIZ_COLOR_HEADER);
+  drawBackButton(tft, 4, 3, 30, 20, COLOR_MUTED);
+  drawQuizBackground(tft);
+  drawDrPiScaled(tft, DR_PI, (240 - QUIZ_PI_DRAW_W) / 2, QUIZ_PI_Y);
+
+  int cardY = QUIZ_PI_BOTTOM + 4;
+  drawSpeechBubble(tft, 20, cardY, 200, 68);
+  tft.setTextFont(1);
+  tft.setTextColor(TFT_BLACK, QUIZ_COLOR_BUBBLE);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString(STR_QUIZ_NO_QUESTIONS_1, 120, cardY + 12);
+  tft.drawString(STR_QUIZ_NO_QUESTIONS_2, 120, cardY + 28);
+  tft.drawString(STR_QUIZ_NO_QUESTIONS_3, 120, cardY + 44);
+  tft.setTextDatum(TL_DATUM);
+}
+
+// ── Start Quiz ────────────────────────────────────
+void startQuiz(TFT_eSPI& tft, AppState& state, int ki, int di, int ti) {
+  state.quizFirstTry = true;
+  state.quizKid   = ki;
+  state.quizDay   = di;
+  state.quizTask  = ti;
+  state.quizCorrectCount    = 0;
+  state.quizCurrentQuestion = 0;
+  state.quizSelectedAnswer  = -1;
+  state.quizShowResult      = false;
+
+  if (state.kids[ki].week[di].tasks[ti].done) {
+    state.screen = SCREEN_QUIZ_RESULT;
+    drawQuizAlreadyDoneScreen(tft, state);
+    return;
+  }
+
+  state.quizQuestionCount = pickRandomQuizQuestions(ki, di, ti,
+                                                     state.quizQuestions);
+  if (state.quizQuestionCount == 0) {
+    state.screen = SCREEN_QUIZ;
+    drawQuizNoQuestionsScreen(tft, state);
+    return;
+  }
+
+  state.screen = SCREEN_QUIZ;
+  drawQuizScreen(tft, state);
+}
+
 // ── Touch Handler ─────────────────────────────────
 
-void handleTouch(TFT_eSPI& tft, AppState& state) {
-  if (state.rfidAssignPending) return;
+void handleTouch(TFT_eSPI &tft, AppState &state) {
+  if (state.rfidAssignPending)
+    return;
 
   uint16_t tx, ty;
-  if (!tft.getTouch(&tx, &ty, 350)) return;
+  if (!tft.getTouch(&tx, &ty, 350))
+    return;
 
   state.lastInteraction = millis();
 
@@ -828,12 +1342,15 @@ void handleTouch(TFT_eSPI& tft, AppState& state) {
     state.screen = SCREEN_HOME;
     drawHomeScreen(tft, state);
     extern void setBrightness(int);
-    for (int b = 0; b <= 255; b += 8) { setBrightness(b); delay(8); }
+    for (int b = 0; b <= 255; b += 8) {
+      setBrightness(b);
+      delay(8);
+    }
     return;
   }
 
   if (state.screen == SCREEN_PLANNER && state.activeKid >= 0) {
-    Kid& kid = state.kids[state.activeKid];
+    Kid &kid = state.kids[state.activeKid];
 
     // Week button
     if (tx > 148 && tx < 192 && ty > 10 && ty < 34) {
@@ -862,24 +1379,29 @@ void handleTouch(TFT_eSPI& tft, AppState& state) {
     }
 
     // Task checkboxes
-    DayPlan& dp = kid.week[state.activeDay];
+    DayPlan &dp = kid.week[state.activeDay];
     int yStart = 102, rowH = 34;
     for (int t = 0; t < dp.taskCount; t++) {
       int ty0 = yStart + t * rowH;
       if (tx > 10 && tx < 230 && (int)ty > ty0 && (int)ty < ty0 + rowH - 4) {
-        dp.tasks[t].done = !dp.tasks[t].done;
-        extern bool savePending;
-        extern unsigned long saveTimer;
-        savePending = true;
-        saveTimer = millis();
-
-        int dayDone = 0;
-        for (int i = 0; i < dp.taskCount; i++) if (dp.tasks[i].done) dayDone++;
-        if (dayDone == dp.taskCount && dp.taskCount > 0) {
+        if (taskHasQuiz(dp.tasks[t])) {
+          startQuiz(tft, state, state.activeKid, state.activeDay, t);
+        } else {
+          dp.tasks[t].done = !dp.tasks[t].done;
+          extern bool savePending;
+          extern unsigned long saveTimer;
+          savePending = true;
+          saveTimer = millis();
+          int dayDone = 0;
+          for (int i = 0; i < dp.taskCount; i++)
+            if (dp.tasks[i].done)
+              dayDone++;
+          if (dayDone == dp.taskCount && dp.taskCount > 0) {
+            drawPlannerScreen(tft, state);
+            showCelebration(tft, kid.color, kid.name);
+          }
           drawPlannerScreen(tft, state);
-          showCelebration(tft, kid.color, kid.name);
         }
-        drawPlannerScreen(tft, state);
         return;
       }
     }
@@ -892,6 +1414,114 @@ void handleTouch(TFT_eSPI& tft, AppState& state) {
       return;
     }
   }
+
+  // ── SCREEN_QUIZ_RESULT ────────────────────────────
+if (state.screen == SCREEN_QUIZ_RESULT) {
+  int cardY = QUIZ_PI_BOTTOM + 4;
+  if (tx > 4 && tx < 34 && ty > 3 && ty < 23) {
+    state.screen = SCREEN_PLANNER;
+    drawPlannerScreen(tft, state);
+    return;
+  }
+  if (tx > 20 && tx < 220 && (int)ty > cardY+48 && (int)ty < cardY+78) {
+    state.quizCorrectCount    = 0;
+    state.quizCurrentQuestion = 0;
+    state.quizSelectedAnswer  = -1;
+    state.quizShowResult      = false;
+    state.quizQuestionCount   = pickRandomQuizQuestions(
+        state.quizKid, state.quizDay, state.quizTask, state.quizQuestions);
+    if (state.quizQuestionCount == 0) {
+      drawQuizNoQuestionsScreen(tft, state);
+    } else {
+      state.screen = SCREEN_QUIZ;
+      drawQuizScreen(tft, state);
+    }
+    return;
+  }
+  if (tx > 20 && tx < 220 && (int)ty > cardY+84 && (int)ty < cardY+114) {
+    state.kids[state.quizKid].week[state.quizDay]
+         .tasks[state.quizTask].done = false;
+    extern bool savePending;
+    extern unsigned long saveTimer;
+    savePending = true;
+    saveTimer   = millis();
+    state.screen = SCREEN_PLANNER;
+    drawPlannerScreen(tft, state);
+    return;
+  }
+}
+
+// ── SCREEN_QUIZ ───────────────────────────────────
+if (state.screen == SCREEN_QUIZ) {
+  if (state.quizQuestionCount == 0) {
+    if (tx > 4 && tx < 34 && ty > 3 && ty < 23) {
+      state.screen = SCREEN_PLANNER;
+      drawPlannerScreen(tft, state);
+    }
+    return;
+  }
+
+  if (state.quizCurrentQuestion >= state.quizQuestionCount) {
+    int cardY = QUIZ_PI_BOTTOM + 4;
+    if (tx > 70 && tx < 170 && (int)ty > cardY+120 && (int)ty < cardY+152) {
+      state.screen = SCREEN_PLANNER;
+      drawPlannerScreen(tft, state);
+    }
+    return;
+  }
+
+  QuizQuestion& q = state.quizQuestions[state.quizCurrentQuestion];
+
+  if (tx > 4 && tx < 34 && ty > 3 && ty < 23) {
+    state.screen = SCREEN_PLANNER;
+    drawPlannerScreen(tft, state);
+    return;
+  }
+
+  for (int i = 0; i < 4; i++) {
+    int btnY = QUIZ_BTN_Y0 + i * (QUIZ_BTN_H + QUIZ_BTN_GAP);
+    if (tx > QUIZ_BTN_X && tx < QUIZ_BTN_X + QUIZ_BTN_W &&
+        (int)ty > btnY && (int)ty < btnY + QUIZ_BTN_H) {
+
+      if (state.quizShowResult) {
+        if (state.quizSelectedAnswer == (int)q.correctIndex) {
+          // Correct – earn one point only on first try
+          if (state.quizFirstTry) state.quizCorrectCount++;
+          state.quizFirstTry   = true;  // reset for next question
+          state.quizCurrentQuestion++;
+          state.quizSelectedAnswer = -1;
+          state.quizShowResult     = false;
+          if (state.quizCurrentQuestion >= state.quizQuestionCount) {
+            if (state.quizCorrectCount == state.quizQuestionCount) {
+              state.kids[state.quizKid].week[state.quizDay]
+                  .tasks[state.quizTask].done = true;
+              extern bool savePending;
+              extern unsigned long saveTimer;
+              savePending = true;
+              saveTimer   = millis();
+            }
+            drawQuizCompleteScreen(tft, state);
+          } else {
+            drawQuizScreen(tft, state);
+          }
+          return;
+        } else {
+          // Wrong – set flag, allow new try
+          state.quizFirstTry       = false;
+          state.quizShowResult     = false;
+          state.quizSelectedAnswer = -1;
+          redrawAnswerButtons(tft, state);
+          return;
+        }
+      }
+
+      state.quizSelectedAnswer = i;
+      state.quizShowResult     = true;
+      drawQuizFeedback(tft, state);
+      return;
+    }
+  }
+}
 
   if (state.screen == SCREEN_HOME) {
     // WiFi tap (left) – toggle IP display
@@ -909,7 +1539,8 @@ void handleTouch(TFT_eSPI& tft, AppState& state) {
     }
 
     int activeCount = countActiveKids(state);
-    if (activeCount == 0) return;
+    if (activeCount == 0)
+      return;
 
     // Vertical button layout: btnW=220, btnH=40, start y=102, gap=4
     int btnW = 220, btnH = 40;
@@ -918,11 +1549,12 @@ void handleTouch(TFT_eSPI& tft, AppState& state) {
 
     int btnIdx = 0;
     for (int i = 0; i < state.kidCount; i++) {
-      if (!state.kids[i].active) continue;
+      if (!state.kids[i].active)
+        continue;
       int by = by_start + btnIdx * (btnH + gap);
 
-      if ((int)tx > bx && (int)tx < bx + btnW &&
-          (int)ty > by && (int)ty < by + btnH) {
+      if ((int)tx > bx && (int)tx < bx + btnW && (int)ty > by &&
+          (int)ty < by + btnH) {
         state.activeKid = i;
         state.activeDay = getTodayIndex();
         state.screen = SCREEN_PLANNER;

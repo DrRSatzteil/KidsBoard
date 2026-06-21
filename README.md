@@ -1,22 +1,10 @@
 # KidsBoard – Family Weekly Planner
 
+![DrPi](tools/assets/drpi.png)
+
 A tactile digital weekly planner for families, built with an ESP32, a 2.8" touch display, and RFID card login. Each family member gets their own RFID card to log in and check off their tasks for the week. Rewards are automatically calculated based on the weekly score.
 
-<img src="docs/box_print.png" width=20% height=20%>
-
-<img src="docs/home_screen.png" width=20% height=20%>
-
-<img src="docs/screen_saver.png" width=25% height=25%>
-
-See the docs folder for more pictures of the actual finished device.
-
----
-
-## Demo
-
-Demo: https://drrsatzteil.github.io/KidsBoard/
-
-The demo is an interactive web interface that simulates the functionality of the device and is not an exact replica of the actual device. The colors of the visual assets are highly saturated to compensate the limited color palette of the display and therefore look overly saturated on a normal computer display.
+![KidsBoard](docs/kidsboard.jpg)
 
 ---
 
@@ -30,6 +18,7 @@ This project was developed almost entirely with the help of [Claude](https://cla
 
 - 🃏 **RFID login** – each family member has their own card
 - ✅ **Weekly task planner** – Monday to Friday, configurable per person
+- 🧠 **Dr. Pi quiz mode** – tasks can require a quiz to be completed before they're checked off, with optional AI-generated questions via the Anthropic API
 - 🏆 **Reward system** – minutes of screen time, items, money, or mystery rewards
 - 🎮 **Retro pixel art UI** – day/night background, animated cloud screensaver, star screensaver at night
 - 📱 **Web interface** – configure tasks, rewards and RFID cards from any browser
@@ -225,6 +214,11 @@ If your power supply is stable, you can move the WiFi setup after `showBootScree
 | Place RFID card | Log in as that family member |
 | Place same card again | Log out |
 | Tap a task | Check / uncheck |
+| Tap a quiz task | Start the Dr. Pi quiz |
+| Answer a question | Tap A / B / C / D |
+| Wrong answer | Dr. Pi looks skeptical – try again |
+| All correct on first try | Task marked as done, Dr. Pi celebrates |
+| Tap a completed quiz task | Replay it, or reset it |
 | Tap a day tab | Switch day |
 | Tap "Week" button | Show reward screen |
 | 60s no interaction | Auto logout |
@@ -291,9 +285,98 @@ const uint16_t* AVATAR_DATA[] = {
 
 ---
 
+## Dr. Pi Quiz Mode
+
+Any task can optionally require a quiz before it can be checked off – useful for learning tasks like "study vocabulary" or "practice math" where you want proof of actual learning, not just a tapped checkbox.
+
+### How it works
+
+1. In the web interface, open a task's quiz editor and enter a topic (e.g. `Times tables up to 10` or `English 5th grade: going to – future tense`)
+2. Click **🤖 Generate with AI** to create 20 questions via the Anthropic API, or add questions manually – no API key required for manual entry
+3. When the child taps the task, Dr. Pi 🐙🎓 appears and asks 5 randomly selected questions with shuffled answer order
+4. Only questions answered correctly on the **first try** count
+5. A perfect score (5/5) marks the task as done; anything less and the child can try again
+
+> 💡 The more specific the topic, the better the questions. `English 5th grade: going to – future tense` works much better than `English`.
+
+If a task has the same quiz topic on multiple days, the question bank is shared across all of them – you only need to generate or enter questions once per task.
+
+### Setting up AI question generation
+
+1. Get an Anthropic API key at [console.anthropic.com](https://console.anthropic.com)
+2. Consider creating a separate workspace with a monthly spending limit – a few cents per month covers occasional question generation
+3. Open the KidsBoard web interface, go to **Settings** (⚙ icon, top right)
+4. Enter your API key and optionally change the model (default: `claude-haiku-4-5-20251001` – fast and cheap; `claude-sonnet-4-6` gives noticeably better questions for less common topics)
+
+Questions are generated once and stored locally on the device. After generation, the quiz works completely offline. The API key is stored in SPIFFS and never transmitted to the browser – the ESP32 calls the Anthropic API directly over HTTPS.
+
+### Manual question entry
+
+No API key needed – open a task's quiz editor and add questions one at a time. Each needs exactly 4 answer options with one marked correct. There's no minimum: with fewer than 5 questions, all of them are shown every round instead of a random subset.
+
+### Dr. Pi sprites
+
+Dr. Pi is a 64×64 pixel art octopus professor, rendered at 128×128 on the display. Three variants are used:
+
+| Sprite | Used when |
+|---|---|
+| `DR_PI` | Asking a question |
+| `DR_PI_HAPPY` | Correct answer / quiz complete |
+| `DR_PI_SKEPTICAL` | Wrong answer |
+
+To create custom Dr. Pi sprites, use `tools/convert_drpi.py`:
+
+```bash
+python3 tools/convert_drpi.py my_sprite.png DR_PI
+python3 tools/convert_drpi.py my_sprite.png DR_PI_HAPPY
+python3 tools/convert_drpi.py my_sprite.png DR_PI_SKEPTICAL
+```
+
+The script handles transparent backgrounds automatically (with a flood-fill fallback if the source PNG has no alpha channel) and applies the byte-swap needed for the ILI9341 display. Paste the output into `retro_assets.h`.
+
+---
+
+## Creating a Custom Skin
+
+While `convert_avatar.py` adds a single avatar, `tools/generate_assets.py` regenerates the entire visual theme at once – background (day + night), all four avatars, the cloud sprite, and the sky mask used for the screensaver animation.
+
+This is useful if you want to replace the whole look (e.g. a winter theme, a space theme, etc.) rather than just adding a family member.
+
+### How it works
+
+1. Create a new background image (240×320px, pixel art style) with a single flat sky color
+2. **Note the ground line.** Dr. Pi stands on your background during the quiz, so the display needs to know where the "ground" is. Measure how many pixels from the **bottom** of your 240×320 background the ground/horizon line sits (e.g. grass meeting sky), then update `QUIZ_BG_OFFSET` in `display_ui.h` accordingly – the comment above the constant explains the calculation. If you skip this, Dr. Pi may appear to float above or sink below the ground in the quiz screen.
+3. Place your source images in `tools/assets/`:
+   ```
+   tools/assets/
+   ├── bg_day.png          ← your new background
+   ├── cloud.png           ← cloud sprite (can stay the same)
+   ├── avatar_mila.png
+   ├── avatar_felix.png
+   ├── avatar_mama.png
+   └── avatar_papa.png
+   ```
+4. Run the generator, specifying the sky color of your new background:
+   ```bash
+   cd tools
+   python3 generate_assets.py --bg assets/bg_day.png --sky-rgb 91,198,232 \
+     --cloud assets/cloud.png \
+     --mila assets/avatar_mila.png --felix assets/avatar_felix.png \
+     --mama assets/avatar_mama.png --papa assets/avatar_papa.png \
+     --output ../retro_assets.h --mask ../sky_mask.h
+   ```
+5. Copy the generated `retro_assets.h` and `sky_mask.h` into the sketch folder, replacing the existing ones
+6. Flash via OTA
+
+> 💡 The script automatically samples the sky color from the *enhanced* background (top-right corner) and applies it to the cloud asset too, so cloud sky pixels blend seamlessly into the background without visible seams. No manual color matching needed.
+
+> 💡 `--sky-rgb` should match the flat sky color in your *source* background image (before enhancement). Use a pixel color picker to find the exact value if you're not sure.
+
+---
+
 ## Localization
 
-The project is set up in German but changing the language should be straightforward. All display strings are in `i18n.h`. All strings for the web interface are in the `STRINGS` and `DAYS` arrays in `webserver.h`.
+The project is set up in German but changing the language should be straightforward. All display strings are in `i18n.h`. All strings for the web interface are in the `S` object at the top of the `<script>` block in `webserver.h` – edit there to translate, everything else is logic.
 
 ---
 
@@ -304,8 +387,8 @@ kidsboard_retro/
 ├── kidsboard_retro.ino   Main sketch
 ├── config.h              Pins, colors, timing constants
 ├── i18n.h                All display strings (localization)
-├── data.h                Data structures, SPIFFS storage
-├── display_ui.h          All screens + touch handlers
+├── data.h                Data structures, SPIFFS storage, quiz helpers
+├── display_ui.h          All screens + touch handlers (incl. Dr. Pi quiz screens)
 ├── retro_gfx.h           Pixel art rendering functions
 ├── retro_assets.h        RGB565 pixel art assets (generated)
 ├── sky_mask.h            1-bit sky mask for cloud/star animation
@@ -315,8 +398,10 @@ kidsboard_retro/
 ├── TFT_eSPI/
 │   └── User_Setup.h      TFT_eSPI config (copy to library folder!)
 └── tools/
-    ├── convert_avatar.py Python script to convert PNG to C array
-    └── demo.png          Example avatar image
+    ├── convert_avatar.py Add a single custom avatar
+    ├── convert_drpi.py   Convert Dr. Pi sprite PNGs to RGB565 C arrays
+    ├── generate_assets.py Regenerate the full visual theme (skin)
+    └── assets/           Source images used by generate_assets.py
 ```
 
 ---
@@ -346,6 +431,12 @@ kidsboard_retro/
 
 **Device shows battery empty even though it is fully charged**
 → Check that your voltage divider is connected to GPIO34. If you don't want to measure battery level at all, change `readBatteryPercent()` to always return 100, and remove the battery display code after `// Battery right` in `display_ui.h`.
+
+**Dr. Pi appears to float or sink into the ground on a custom skin**
+→ Adjust `QUIZ_BG_OFFSET` in `display_ui.h` to match your background's ground line – see [Creating a Custom Skin](#creating-a-custom-skin).
+
+**Quiz generation fails or times out**
+→ Larger/slower models (e.g. `claude-sonnet-4-6`) can take longer than the default 90s timeout for 20 questions. Increase the timeout in `callAnthropicForQuiz()` in `webserver.h` if needed.
 
 ---
 
