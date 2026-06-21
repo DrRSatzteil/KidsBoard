@@ -10,6 +10,8 @@ A tactile digital weekly planner for families, built with an ESP32, a 2.8" touch
 
 <img src="docs/screen_saver.png" width=25% height=25%>
 
+<img src="docs/quiz.png" width=25% height=25%>
+
 See the docs folder for more pictures of the actual finished device.
 
 ---
