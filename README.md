@@ -4,7 +4,21 @@
 
 A tactile digital weekly planner for families, built with an ESP32, a 2.8" touch display, and RFID card login. Each family member gets their own RFID card to log in and check off their tasks for the week. Rewards are automatically calculated based on the weekly score.
 
-![KidsBoard](docs/kidsboard.jpg)
+<img src="docs/box_print.png" width=45% height=45%>
+
+<img src="docs/home_screen.png" width=20% height=20%>
+
+<img src="docs/screen_saver.png" width=25% height=25%>
+
+See the docs folder for more pictures of the actual finished device.
+
+---
+
+## Demo
+
+Demo: https://drrsatzteil.github.io/KidsBoard/
+
+The demo is an interactive web interface that simulates the functionality of the device and is not an exact replica of the actual device. The colors of the visual assets are highly saturated to compensate the limited color palette of the display and therefore look overly saturated on a normal computer display.
 
 ---
 
