@@ -522,6 +522,7 @@ function renderPlanCard() {
       rowNames[t._id] = t.name;
     });
   });
+  rowIds.sort((a, b) => a - b);
 
   function findTask(di, id) {
     return kid.week[di].tasks.find(t => t._id === id) || null;
