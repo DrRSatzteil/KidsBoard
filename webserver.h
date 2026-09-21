@@ -446,11 +446,15 @@ let nextTaskId = 1;
 function assignTaskIds() {
   nextTaskId = 1;
   data.kids.forEach(kid => {
-    const idByName = {};
     kid.week.forEach(day => {
       day.tasks.forEach(t => {
-        if (!(t.name in idByName)) idByName[t.name] = nextTaskId++;
-        t._id = idByName[t.name];
+        // Use server-side id if available, otherwise assign new
+        if (t.id && t.id > 0) {
+          t._id = t.id;
+          if (t.id >= nextTaskId) nextTaskId = t.id + 1;
+        } else {
+          t._id = nextTaskId++;
+        }
       });
     });
   });
@@ -942,13 +946,9 @@ async function saveSettingsModal() {
 // ── Save ──────────────────────────────────────────
 
 async function save() {
-  // The device's JSON schema doesn't know about _id - it's a
-  // client-only field used to track task identity across days while
-  // editing. Strip it before sending so the payload matches what the
-  // ESP32 expects.
   const payload = JSON.parse(JSON.stringify(data));
   payload.kids.forEach(k => k.week.forEach(day => day.tasks.forEach(t => {
-    if (t._id) t.id = t._id;  // carry over client ID as server ID
+    if (t._id) t.id = t._id;
     delete t._id;
   })));
 
@@ -958,8 +958,16 @@ async function save() {
     body: JSON.stringify(payload)
   });
   const res = await r.json();
-  if (res.ok) showToast();
-  else showGlobalStatus(S.saveError, false);
+  if (res.ok) {
+    showToast();
+    // Reload data so client has server-assigned IDs
+    const dr = await fetch('/api/data');
+    data = await dr.json();
+    assignTaskIds();
+    syncQuizTopicsById();
+  } else {
+    showGlobalStatus(S.saveError, false);
+  }
 }
 
 // ── Tabs ──────────────────────────────────────────
@@ -1266,6 +1274,7 @@ void setupWebserver(AsyncWebServer &server, AppState &state, TFT_eSPI &tft) {
           task["name"]      = state.kids[i].week[d].tasks[t].name;
           task["done"]      = state.kids[i].week[d].tasks[t].done;
           task["quizTopic"] = state.kids[i].week[d].tasks[t].quizTopic;
+          task["id"] = state.kids[i].week[d].tasks[t].id;
         }
       }
     }
