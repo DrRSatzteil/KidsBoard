@@ -1312,9 +1312,8 @@ void startQuiz(TFT_eSPI& tft, AppState& state, int ki, int di, int ti) {
     drawQuizAlreadyDoneScreen(tft, state);
     return;
   }
-
-  state.quizQuestionCount = pickRandomQuizQuestions(ki, di, ti,
-                                                     state.quizQuestions);
+  state.quizTaskId = state.kids[ki].week[di].tasks[ti].id;
+  state.quizQuestionCount = pickRandomQuizQuestions(state.quizTaskId, state.quizQuestions);
   if (state.quizQuestionCount == 0) {
     state.screen = SCREEN_QUIZ;
     drawQuizNoQuestionsScreen(tft, state);
@@ -1428,8 +1427,7 @@ if (state.screen == SCREEN_QUIZ_RESULT) {
     state.quizCurrentQuestion = 0;
     state.quizSelectedAnswer  = -1;
     state.quizShowResult      = false;
-    state.quizQuestionCount   = pickRandomQuizQuestions(
-        state.quizKid, state.quizDay, state.quizTask, state.quizQuestions);
+    state.quizQuestionCount = pickRandomQuizQuestions(state.quizTaskId, state.quizQuestions);
     if (state.quizQuestionCount == 0) {
       drawQuizNoQuestionsScreen(tft, state);
     } else {

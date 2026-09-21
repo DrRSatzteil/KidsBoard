@@ -8,6 +8,7 @@
 #include <ArduinoJson.h>
 #include <FS.h>
 #include <SPIFFS.h>
+#include <set>
 
 using namespace fs;
 
@@ -34,7 +35,8 @@ struct QuizQuestion {
 struct Task {
   char name[32];
   bool done;
-  char quizTopic[MAX_QUIZ_TOPIC_LEN]; // empty = normal task, set = quiz required
+  char quizTopic[MAX_QUIZ_TOPIC_LEN];
+  uint32_t id;  // unique task ID, never reused
 };
 
 struct DayPlan {
@@ -69,6 +71,7 @@ struct AppState {
   unsigned long lastInteraction = 0;
   bool showIP = false;
   bool showVoltage = false;
+  uint32_t nextTaskId = 0;
 
   // RFID Assignment (non-blocking)
   bool rfidAssignPending = false;
@@ -77,6 +80,7 @@ struct AppState {
   unsigned long rfidAssignStartTime = 0;
 
   // Quiz state
+  uint32_t quizTaskId = 0;
   int quizKid = -1;
   int quizDay = -1;
   int quizTask = -1;
@@ -183,15 +187,15 @@ void formatReward(const Reward &r, int stars, char *buf, int bufSize) {
 bool taskHasQuiz(const Task &task) { return task.quizTopic[0] != '\0'; }
 
 // Builds SPIFFS path for quiz questions: /q_<kidIdx>_<day>_<taskIdx>.json
-void getQuizPath(int kidIdx, int day, int taskIdx, char *buf, int bufSize) {
-  snprintf(buf, bufSize, "/q_%d_%d_%d.json", kidIdx, day, taskIdx);
+void getQuizPath(uint32_t taskId, char *buf, int bufSize) {
+  snprintf(buf, bufSize, "/q_%u.json", taskId);
 }
 
 // Saves quiz questions to SPIFFS (called from webserver after generation)
-bool saveQuizQuestions(int kidIdx, int day, int taskIdx,
+bool saveQuizQuestions(uint32_t taskId,
                        QuizQuestion *questions, int count) {
   char path[32];
-  getQuizPath(kidIdx, day, taskIdx, path, sizeof(path));
+  getQuizPath(taskId, path, sizeof(path));
 
   DynamicJsonDocument doc(8192);
   JsonArray arr = doc.createNestedArray("questions");
@@ -216,26 +220,26 @@ bool saveQuizQuestions(int kidIdx, int day, int taskIdx,
 }
 
 void cleanupOrphanedQuizFiles(AppState &state) {
+  // Collect all valid task IDs
+  std::set<uint32_t> validIds;
+  for (int ki = 0; ki < state.kidCount; ki++)
+    for (int di = 0; di < DAYS_COUNT; di++)
+      for (int ti = 0; ti < state.kids[ki].week[di].taskCount; ti++)
+        if (state.kids[ki].week[di].tasks[ti].id > 0)
+          validIds.insert(state.kids[ki].week[di].tasks[ti].id);
+
   File root = SPIFFS.open("/");
   File file = root.openNextFile();
   while (file) {
-    String name = file.name();
+    String name = String(file.name());
+    if (!name.startsWith("/")) name = "/" + name;
     file.close();
-    // Check for files with pattern /q_X_X_X.json
     if (name.startsWith("/q_") && name.endsWith(".json")) {
-      int ki, di, ti;
-      if (sscanf(name.c_str(), "/q_%d_%d_%d.json", &ki, &di, &ti) == 3) {
-        bool orphaned = true;
-        if (ki < state.kidCount && di < DAYS_COUNT &&
-            ti < state.kids[ki].week[di].taskCount) {
-          if (taskHasQuiz(state.kids[ki].week[di].tasks[ti])) {
-            orphaned = false;
-          }
-        }
-        if (orphaned) {
-          SPIFFS.remove(name);
-          Serial.printf("Cleaned up orphaned quiz: %s\n", name.c_str());
-        }
+      uint32_t id = 0;
+      sscanf(name.c_str(), "/q_%u.json", &id);
+      if (id == 0 || validIds.find(id) == validIds.end()) {
+        SPIFFS.remove(name);
+        Serial.printf("Cleanup: removed %s\n", name.c_str());
       }
     }
     file = root.openNextFile();
@@ -256,10 +260,9 @@ void replaceUmlauts(char *str, int maxLen) {
 
 // Loads quiz questions from SPIFFS into provided array.
 // Returns number of questions loaded, 0 if none exist.
-int loadQuizQuestions(int kidIdx, int day, int taskIdx, QuizQuestion *questions,
-                      int maxCount) {
+int loadQuizQuestions(uint32_t taskId, QuizQuestion *questions, int maxCount) {
   char path[32];
-  getQuizPath(kidIdx, day, taskIdx, path, sizeof(path));
+  getQuizPath(taskId, path, sizeof(path));
 
   if (!SPIFFS.exists(path))
     return 0;
@@ -293,28 +296,17 @@ int loadQuizQuestions(int kidIdx, int day, int taskIdx, QuizQuestion *questions,
 }
 
 // Deletes quiz questions from SPIFFS (e.g. when topic changes)
-void deleteQuizQuestions(int kidIdx, int day, int taskIdx) {
+void deleteQuizQuestions(uint32_t taskId) {
   char path[32];
-  getQuizPath(kidIdx, day, taskIdx, path, sizeof(path));
+  getQuizPath(taskId, path, sizeof(path));
   if (SPIFFS.exists(path))
     SPIFFS.remove(path);
 }
 
-// Returns true if quiz questions exist for a task
-bool quizQuestionsExist(int kidIdx, int day, int taskIdx) {
-  char path[32];
-  getQuizPath(kidIdx, day, taskIdx, path, sizeof(path));
-  return SPIFFS.exists(path);
-}
-
-// Picks QUIZ_QUESTIONS_PER_ROUND random questions from the full bank.
-// Writes into 'out', returns actual count (may be less if bank is small).
-int pickRandomQuizQuestions(int kidIdx, int day, int taskIdx,
-                            QuizQuestion *out) {
+int pickRandomQuizQuestions(uint32_t taskId, QuizQuestion *out) {
   QuizQuestion *bank = new QuizQuestion[MAX_QUIZ_QUESTIONS];
-  if (!bank)
-    return 0;
-  int total = loadQuizQuestions(kidIdx, day, taskIdx, bank, MAX_QUIZ_QUESTIONS);
+  if (!bank) return 0;
+  int total = loadQuizQuestions(taskId, bank, MAX_QUIZ_QUESTIONS);
   if (total == 0) {
     delete[] bank;
     return 0;
@@ -401,10 +393,7 @@ void loadData(AppState &state) {
   }
 
   File f = SPIFFS.open("/data.json", "r");
-  if (!f) {
-    loadDefaultData(state);
-    return;
-  }
+  if (!f) { loadDefaultData(state); return; }
 
   DynamicJsonDocument doc(16384);
   DeserializationError err = deserializeJson(doc, f);
@@ -425,26 +414,25 @@ void loadData(AppState &state) {
     return;
   }
 
+  state.nextTaskId = doc["nextTaskId"] | 0;
+
   for (JsonObject k : kids) {
-    if (state.kidCount >= MAX_KIDS)
-      break;
+    if (state.kidCount >= MAX_KIDS) break;
     int i = state.kidCount++;
 
-    strlcpy(state.kids[i].name, k["name"] | "Kid", 24);
+    strlcpy(state.kids[i].name,    k["name"] | "Kid",        24);
     strlcpy(state.kids[i].rfidUID, k["rfid"] | "00:00:00:00", 16);
-    state.kids[i].color = (uint16_t)(k["color"] | COLOR_KID_0);
+    state.kids[i].color  = (uint16_t)(k["color"]  | COLOR_KID_0);
     state.kids[i].active = k["active"] | true;
 
-    // Load rewards
     state.kids[i].rewardCount = 0;
     JsonArray rewards = k["rewards"];
     if (rewards) {
       for (JsonObject r : rewards) {
-        if (state.kids[i].rewardCount >= 3)
-          break;
+        if (state.kids[i].rewardCount >= 3) break;
         int ri = state.kids[i].rewardCount++;
         strlcpy(state.kids[i].rewards[ri].name, r["name"] | "Reward", 32);
-        strlcpy(state.kids[i].rewards[ri].type, r["type"] | "min", 8);
+        strlcpy(state.kids[i].rewards[ri].type, r["type"] | "min",    8);
         state.kids[i].rewards[ri].maxValue = r["maxValue"] | 60;
       }
     }
@@ -454,61 +442,65 @@ void loadData(AppState &state) {
       JsonArray tasks = week[d]["tasks"];
       state.kids[i].week[d].taskCount = 0;
       for (JsonObject t : tasks) {
-        if (state.kids[i].week[d].taskCount >= MAX_TASKS_PER_DAY)
-          break;
+        if (state.kids[i].week[d].taskCount >= MAX_TASKS_PER_DAY) break;
         int ti = state.kids[i].week[d].taskCount++;
-        strlcpy(state.kids[i].week[d].tasks[ti].name, t["name"] | "Task", 32);
+        strlcpy(state.kids[i].week[d].tasks[ti].name,      t["name"] | "Task",  32);
         state.kids[i].week[d].tasks[ti].done = t["done"] | false;
-        // quizTopic: optional, empty string = normal task
-        strlcpy(state.kids[i].week[d].tasks[ti].quizTopic, t["quizTopic"] | "",
-                MAX_QUIZ_TOPIC_LEN);
+        strlcpy(state.kids[i].week[d].tasks[ti].quizTopic, t["quizTopic"] | "", MAX_QUIZ_TOPIC_LEN);
+        state.kids[i].week[d].tasks[ti].id = t["id"] | 0;
       }
     }
   }
 
-  Serial.printf("Loaded %d kids from SPIFFS\n", state.kidCount);
+  Serial.printf("Loaded %d kids, nextTaskId=%u\n", state.kidCount, state.nextTaskId);
 }
 
 // ── Save JSON ────────────────────────────────────
 
 void saveData(AppState &state) {
   DynamicJsonDocument doc(16384);
-  JsonArray kids = doc.createNestedArray("kids");
+  doc["nextTaskId"] = state.nextTaskId;
 
+  JsonArray kids = doc.createNestedArray("kids");
   for (int i = 0; i < state.kidCount; i++) {
     JsonObject k = kids.createNestedObject();
-    k["name"] = state.kids[i].name;
-    k["rfid"] = state.kids[i].rfidUID;
-    k["color"] = state.kids[i].color;
+    k["name"]   = state.kids[i].name;
+    k["rfid"]   = state.kids[i].rfidUID;
+    k["color"]  = state.kids[i].color;
     k["active"] = state.kids[i].active;
 
-    // Save rewards
     JsonArray rewards = k.createNestedArray("rewards");
     for (int r = 0; r < state.kids[i].rewardCount; r++) {
       JsonObject robj = rewards.createNestedObject();
-      robj["name"] = state.kids[i].rewards[r].name;
-      robj["type"] = state.kids[i].rewards[r].type;
+      robj["name"]     = state.kids[i].rewards[r].name;
+      robj["type"]     = state.kids[i].rewards[r].type;
       robj["maxValue"] = state.kids[i].rewards[r].maxValue;
     }
 
     JsonArray week = k.createNestedArray("week");
     for (int d = 0; d < DAYS_COUNT; d++) {
-      JsonObject day = week.createNestedObject();
-      JsonArray tasks = day.createNestedArray("tasks");
+      JsonObject day   = week.createNestedObject();
+      JsonArray  tasks = day.createNestedArray("tasks");
       for (int t = 0; t < state.kids[i].week[d].taskCount; t++) {
         JsonObject task = tasks.createNestedObject();
         task["name"] = state.kids[i].week[d].tasks[t].name;
         task["done"] = state.kids[i].week[d].tasks[t].done;
-        // Only write quizTopic if set – keeps JSON clean for non-quiz tasks
-        if (state.kids[i].week[d].tasks[t].quizTopic[0] != '\0') {
+        task["id"]   = state.kids[i].week[d].tasks[t].id;
+        if (state.kids[i].week[d].tasks[t].quizTopic[0] != '\0')
           task["quizTopic"] = state.kids[i].week[d].tasks[t].quizTopic;
-        }
       }
     }
   }
 
   File f = SPIFFS.open("/data.json", "w");
-  serializeJson(doc, f);
+  if (!f) {
+    Serial.println("saveData: failed to open data.json!");
+    return;
+  }
+  size_t written = serializeJson(doc, f);
   f.close();
-  Serial.println("Data saved");
+  if (written == 0)
+    Serial.println("saveData: write failed - SPIFFS may be full!");
+  else
+    Serial.printf("Data saved (%d bytes)\n", written);
 }

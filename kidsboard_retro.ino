@@ -246,6 +246,7 @@ void setup() {
 
   // Data
   loadData(state);
+  cleanupOrphanedQuizFiles(state);
 
   // Webserver + ElegantOTA
   setupWebserver(server, state, tft);

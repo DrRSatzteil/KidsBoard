@@ -673,35 +673,25 @@ function resetKidTasks() {
 async function openQuiz(id) {
   quizModalKi = activeKid;
   quizModalTaskId = id;
-  // Look up the current display name for the title via any occurrence
+
+  // Look up display name and topic via any occurrence
   let displayName = S.newTaskName;
+  let topic = '';
   for (const day of data.kids[activeKid].week) {
     const t = day.tasks.find(x => x._id === id);
-    if (t) { displayName = t.name; break; }
+    if (t) { displayName = t.name; topic = t.quizTopic || ''; break; }
   }
+
   document.getElementById('quizModalTitle').textContent = S.quizModalPrefix + displayName;
 
-  const week = data.kids[activeKid].week;
-  let loadDi = -1, loadTi = -1, topic = '';
-  for (let di = 0; di < 5; di++) {
-    const ti = week[di].tasks.findIndex(t => t._id === id);
-    if (ti >= 0) {
-      loadDi = di; loadTi = ti;
-      topic = week[di].tasks[ti].quizTopic || '';
-      break;
-    }
-  }
-
   quizModalQuestions = [];
-  if (loadDi >= 0) {
-    try {
-      const r = await fetch(`/api/quiz/load?kid=${activeKid}&day=${loadDi}&task=${loadTi}`);
-      if (r.ok) {
-        const res = await r.json();
-        if (res.questions) quizModalQuestions = res.questions.map(q => ({ q: q.q, answers: q.a, correct: q.c }));
-      }
-    } catch(e) {}
-  }
+  try {
+    const r = await fetch(`/api/quiz/load?taskId=${id}`);
+    if (r.ok) {
+      const res = await r.json();
+      if (res.questions) quizModalQuestions = res.questions.map(q => ({ q: q.q, answers: q.a, correct: q.c }));
+    }
+  } catch(e) {}
 
   renderQuizModalBody(topic);
   document.getElementById('quizModal').style.display = 'flex';
@@ -763,7 +753,7 @@ async function generateQuiz() {
     const r = await fetch('/api/quiz/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kid: quizModalKi, day: 0, task: 0, topic })
+      body: JSON.stringify({ taskId: quizModalTaskId, topic })
     });
     const res = await r.json();
     if (res.ok && res.questions) {
@@ -800,7 +790,7 @@ async function saveQuizModal() {
         await fetch('/api/quiz/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ kid: quizModalKi, day: di, task: ti, questions: payload })
+          body: JSON.stringify({ taskId: id, questions: payload })
         });
       }
     }
@@ -957,7 +947,10 @@ async function save() {
   // editing. Strip it before sending so the payload matches what the
   // ESP32 expects.
   const payload = JSON.parse(JSON.stringify(data));
-  payload.kids.forEach(k => k.week.forEach(day => day.tasks.forEach(t => { delete t._id; })));
+  payload.kids.forEach(k => k.week.forEach(day => day.tasks.forEach(t => {
+    if (t._id) t.id = t._id;  // carry over client ID as server ID
+    delete t._id;
+  })));
 
   const r = await fetch('/api/save', {
     method: 'POST',
@@ -1085,6 +1078,112 @@ function showStatus(msg, ok) {
 </html>
 )rawhtml";
 
+const char HTML_DEBUG[] PROGMEM = R"rawhtml(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KidsBoard Debug</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f0f1a;color:#e8e8f0;font-family:'Courier New',monospace;font-size:13px;padding:16px}
+h1{color:#4ecdc4;margin-bottom:16px;font-size:16px}
+.card{background:#1a1a2e;border:0.5px solid #2a2a4a;border-radius:8px;padding:14px;margin-bottom:12px}
+.label{font-size:10px;color:#555;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+.stat{display:flex;justify-content:space-between;padding:4px 0;border-bottom:0.5px solid #1f1f38}
+.stat:last-child{border:none}
+.val{color:#4ecdc4}
+.file-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:0.5px solid #1f1f38}
+.file-row:last-child{border:none}
+.file-name{color:#aaa;word-break:break-all}
+.file-size{color:#555;font-size:11px;white-space:nowrap;margin:0 8px}
+.btn-del{background:transparent;border:0.5px solid #3a1a1a;color:#f87171;border-radius:4px;padding:2px 8px;cursor:pointer;font-family:inherit;font-size:11px}
+.btn-del:hover{background:#3a1a1a}
+.protected{color:#444;font-size:10px;margin-left:4px}
+.bar{height:6px;background:#1f1f38;border-radius:3px;margin-top:6px}
+.bar-fill{height:100%;border-radius:3px;background:#4ecdc4;transition:width 0.3s}
+.bar-fill.warn{background:#fbbf24}
+.bar-fill.danger{background:#f87171}
+.msg{padding:8px;border-radius:4px;font-size:11px;margin-top:8px;display:none}
+.msg.ok{background:rgba(0,200,0,0.1);color:#4ade80;border:0.5px solid rgba(0,200,0,0.2)}
+.msg.err{background:rgba(255,0,0,0.1);color:#f87171;border:0.5px solid rgba(255,0,0,0.2)}
+</style>
+</head>
+<body>
+<h1>🗂 KidsBoard SPIFFS Debug</h1>
+<div class="card">
+  <div class="label">Storage</div>
+  <div class="stat"><span>Total</span><span class="val" id="total">-</span></div>
+  <div class="stat"><span>Used</span><span class="val" id="used">-</span></div>
+  <div class="stat"><span>Free</span><span class="val" id="free">-</span></div>
+  <div class="bar"><div class="bar-fill" id="bar" style="width:0%"></div></div>
+</div>
+<button id="delAllBtn" class="btn-del" style="width:100%;margin-bottom:8px;padding:8px;display:none" onclick="delAll()">🗑 Delete all quiz files</button>
+<div class="card">
+  <div class="label">Files</div>
+  <div id="files">Loading...</div>
+</div>
+<div class="msg" id="msg"></div>
+<script>
+function fmt(b){return b>1024*1024?(b/1024/1024).toFixed(2)+' MB':b>1024?(b/1024).toFixed(1)+' KB':b+' B';}
+async function load(){
+  const r=await fetch('/api/debug/files');
+  const d=await r.json();
+  document.getElementById('total').textContent=fmt(d.totalBytes);
+  document.getElementById('used').textContent=fmt(d.usedBytes);
+  document.getElementById('free').textContent=fmt(d.freeBytes);
+  const pct=Math.round(d.usedBytes/d.totalBytes*100);
+  const bar=document.getElementById('bar');
+  bar.style.width=pct+'%';
+  bar.className='bar-fill'+(pct>90?' danger':pct>70?' warn':'');
+  const protected_=['data.json','settings.json'];
+  const quizFiles=d.files.filter(f=>!protected_.some(p=>f.name.endsWith(p)));
+  document.getElementById('delAllBtn').style.display=quizFiles.length>0?'block':'none';
+  document.getElementById('files').innerHTML=d.files.length===0?'<span style="color:#444">No files</span>':
+    d.files.map(f=>`<div class="file-row">
+      <span class="file-name">${f.name}</span>
+      <span class="file-size">${fmt(f.size)}</span>
+      ${protected_.some(p=>f.name.endsWith(p))?
+        '<span class="protected">protected</span>':
+        `<button class="btn-del" onclick="del('${f.name}')">Delete</button>`}
+    </div>`).join('');
+}
+async function del(path){
+  if(!confirm('Delete '+path+'?')) return;
+  const r=await fetch('/api/debug/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
+  const res=await r.json();
+  showMsg(res.ok?'Deleted: '+path:'Error: '+(res.error||'unknown'),res.ok);
+  if(res.ok) load();
+}
+async function delAll(){
+  if(!confirm('Delete ALL quiz files?')) return;
+  const r=await fetch('/api/debug/files');
+  const d=await r.json();
+  const protected_=['data.json','settings.json'];
+  const quizFiles=d.files.filter(f=>!protected_.some(p=>f.name.endsWith(p)));
+  let ok=0,fail=0;
+  for(const f of quizFiles){
+    const res=await fetch('/api/debug/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:f.name})});
+    const j=await res.json();
+    j.ok?ok++:fail++;
+  }
+  showMsg(`Deleted ${ok} files${fail>0?' ('+fail+' failed)':''}`,fail===0);
+  load();
+}
+function showMsg(msg,ok){
+  const m=document.getElementById('msg');
+  m.className='msg '+(ok?'ok':'err');
+  m.textContent=msg;
+  m.style.display='block';
+  setTimeout(()=>m.style.display='none',3000);
+}
+load();
+</script>
+</body>
+</html>
+)rawhtml";
+
 // ── Server setup ──────────────────────────────────
 
 void setupWebserver(AsyncWebServer &server, AppState &state, TFT_eSPI &tft) {
@@ -1095,6 +1194,10 @@ void setupWebserver(AsyncWebServer &server, AppState &state, TFT_eSPI &tft) {
 
   server.on("/wifi", HTTP_GET, [](AsyncWebServerRequest *req) {
     req->send_P(200, "text/html", HTML_WIFI);
+  });
+
+  server.on("/debug", HTTP_GET, [](AsyncWebServerRequest* req) {
+    req->send_P(200, "text/html", HTML_DEBUG);
   });
 
   server.on("/api/wifi", HTTP_POST, [](AsyncWebServerRequest *req) {}, nullptr,
@@ -1172,70 +1275,76 @@ void setupWebserver(AsyncWebServer &server, AppState &state, TFT_eSPI &tft) {
   });
 
   server.on("/api/save", HTTP_POST, [](AsyncWebServerRequest *req) {}, nullptr,
-    [&state](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
-      static uint8_t bodyBuf[16384];
-      static size_t bodyLen = 0;
-      if (index == 0) bodyLen = 0;
-      if (bodyLen + len < sizeof(bodyBuf)) { memcpy(bodyBuf + bodyLen, data, len); bodyLen += len; }
-      else { req->send(400, "application/json", "{\"ok\":false}"); return; }
-      if (index + len < total) return;
+  [&state](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
+    static uint8_t bodyBuf[16384];
+    static size_t bodyLen = 0;
+    if (index == 0) bodyLen = 0;
+    if (bodyLen + len < sizeof(bodyBuf)) { memcpy(bodyBuf + bodyLen, data, len); bodyLen += len; }
+    else { req->send(400, "application/json", "{\"ok\":false}"); return; }
+    if (index + len < total) return;
 
-      DynamicJsonDocument doc(16384);
-      if (deserializeJson(doc, bodyBuf, bodyLen)) { req->send(400, "application/json", "{\"ok\":false}"); return; }
+    DynamicJsonDocument doc(16384);
+    if (deserializeJson(doc, bodyBuf, bodyLen)) { req->send(400, "application/json", "{\"ok\":false}"); return; }
 
-      JsonArray kids = doc["kids"];
-      state.kidCount = 0;
-      for (JsonObject k : kids) {
-        if (state.kidCount >= MAX_KIDS) break;
-        int i = state.kidCount++;
-        strlcpy(state.kids[i].name,    k["name"] | "Kind",        24);
-        strlcpy(state.kids[i].rfidUID, k["rfid"] | "00:00:00:00", 16);
-        state.kids[i].color  = k["color"]  | COLOR_KID_0;
-        state.kids[i].active = k["active"] | true;
+    JsonArray kids = doc["kids"];
+    state.kidCount = 0;
+    for (JsonObject k : kids) {
+      if (state.kidCount >= MAX_KIDS) break;
+      int i = state.kidCount++;
+      strlcpy(state.kids[i].name,    k["name"] | "Kind",        24);
+      strlcpy(state.kids[i].rfidUID, k["rfid"] | "00:00:00:00", 16);
+      state.kids[i].color  = k["color"]  | COLOR_KID_0;
+      state.kids[i].active = k["active"] | true;
 
-        state.kids[i].rewardCount = 0;
-        JsonArray rewards = k["rewards"];
-        if (rewards) {
-          for (JsonObject r : rewards) {
-            if (state.kids[i].rewardCount >= 3) break;
-            int ri = state.kids[i].rewardCount++;
-            strlcpy(state.kids[i].rewards[ri].name, r["name"] | "Belohnung", 32);
-            strlcpy(state.kids[i].rewards[ri].type, r["type"] | "min",       8);
-            state.kids[i].rewards[ri].maxValue = r["maxValue"] | 60;
-          }
-        }
-
-        JsonArray week = k["week"];
-        for (int d = 0; d < DAYS_COUNT && d < (int)week.size(); d++) {
-          JsonArray tasks = week[d]["tasks"];
-          state.kids[i].week[d].taskCount = 0;
-          for (JsonObject t : tasks) {
-            if (state.kids[i].week[d].taskCount >= MAX_TASKS_PER_DAY) break;
-            int ti = state.kids[i].week[d].taskCount++;
-            strlcpy(state.kids[i].week[d].tasks[ti].name,      t["name"] | "Aufgabe", 32);
-            state.kids[i].week[d].tasks[ti].done = t["done"] | false;
-            strlcpy(state.kids[i].week[d].tasks[ti].quizTopic, t["quizTopic"] | "", MAX_QUIZ_TOPIC_LEN);
-          }
+      state.kids[i].rewardCount = 0;
+      JsonArray rewards = k["rewards"];
+      if (rewards) {
+        for (JsonObject r : rewards) {
+          if (state.kids[i].rewardCount >= 3) break;
+          int ri = state.kids[i].rewardCount++;
+          strlcpy(state.kids[i].rewards[ri].name, r["name"] | "Belohnung", 32);
+          strlcpy(state.kids[i].rewards[ri].type, r["type"] | "min",       8);
+          state.kids[i].rewards[ri].maxValue = r["maxValue"] | 60;
         }
       }
 
-      saveData(state);
-      cleanupOrphanedQuizFiles(state);
-      req->send(200, "application/json", "{\"ok\":true}");
-    });
+      JsonArray week = k["week"];
+      for (int d = 0; d < DAYS_COUNT && d < (int)week.size(); d++) {
+        JsonArray tasks = week[d]["tasks"];
+        state.kids[i].week[d].taskCount = 0;
+        for (JsonObject t : tasks) {
+          if (state.kids[i].week[d].taskCount >= MAX_TASKS_PER_DAY) break;
+          int ti = state.kids[i].week[d].taskCount++;
+          strlcpy(state.kids[i].week[d].tasks[ti].name,      t["name"] | "Aufgabe", 32);
+          state.kids[i].week[d].tasks[ti].done = t["done"] | false;
+          strlcpy(state.kids[i].week[d].tasks[ti].quizTopic, t["quizTopic"] | "", MAX_QUIZ_TOPIC_LEN);
+          // Restore existing ID or assign new one
+          uint32_t existingId = t["id"] | 0;
+          if (existingId > 0) {
+            state.kids[i].week[d].tasks[ti].id = existingId;
+            if (existingId > state.nextTaskId) state.nextTaskId = existingId;
+          } else {
+            state.kids[i].week[d].tasks[ti].id = ++state.nextTaskId;
+          }
+        }
+      }
+    }
+
+    saveData(state);
+    cleanupOrphanedQuizFiles(state);
+    req->send(200, "application/json", "{\"ok\":true}");
+  });
 
   // Load quiz questions for the modal
   server.on("/api/quiz/load", HTTP_GET, [](AsyncWebServerRequest *req) {
-    if (!req->hasParam("kid") || !req->hasParam("day") || !req->hasParam("task")) {
+    if (!req->hasParam("taskId")) {
       req->send(400, "application/json", "{\"ok\":false}");
       return;
     }
-    int ki = req->getParam("kid")->value().toInt();
-    int di = req->getParam("day")->value().toInt();
-    int ti = req->getParam("task")->value().toInt();
+    uint32_t taskId = req->getParam("taskId")->value().toInt();
 
     QuizQuestion questions[MAX_QUIZ_QUESTIONS];
-    int count = loadQuizQuestions(ki, di, ti, questions, MAX_QUIZ_QUESTIONS);
+    int count = loadQuizQuestions(taskId, questions, MAX_QUIZ_QUESTIONS);
 
     DynamicJsonDocument doc(8192);
     doc["ok"] = true;
@@ -1254,77 +1363,75 @@ void setupWebserver(AsyncWebServer &server, AppState &state, TFT_eSPI &tft) {
 
   server.on("/api/quiz/save", HTTP_POST, [](AsyncWebServerRequest *req) {}, nullptr,
     [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
-      static uint8_t buf[8192];
-      static size_t bufLen = 0;
-      if (index == 0) bufLen = 0;
-      if (bufLen + len < sizeof(buf)) { memcpy(buf + bufLen, data, len); bufLen += len; }
-      if (index + len < total) return;
+    static uint8_t buf[8192];
+    static size_t bufLen = 0;
+    if (index == 0) bufLen = 0;
+    if (bufLen + len < sizeof(buf)) { memcpy(buf + bufLen, data, len); bufLen += len; }
+    if (index + len < total) return;
 
-      DynamicJsonDocument doc(8192);
-      if (deserializeJson(doc, buf, bufLen)) { req->send(400, "application/json", "{\"ok\":false}"); return; }
+    DynamicJsonDocument doc(8192);
+    if (deserializeJson(doc, buf, bufLen)) { req->send(400, "application/json", "{\"ok\":false}"); return; }
 
-      int ki = doc["kid"] | 0;
-      int di = doc["day"] | 0;
-      int ti = doc["task"] | 0;
+    uint32_t taskId = doc["taskId"] | 0;
+    if (taskId == 0) { req->send(400, "application/json", "{\"ok\":false}"); return; }
 
-      QuizQuestion questions[MAX_QUIZ_QUESTIONS];
-      int count = 0;
-      for (JsonObject q : doc["questions"].as<JsonArray>()) {
-        if (count >= MAX_QUIZ_QUESTIONS) break;
-        strlcpy(questions[count].question, q["q"] | "", MAX_QUESTION_LEN);
-        questions[count].correctIndex = q["c"] | 0;
-        JsonArray answers = q["a"];
-        for (int j = 0; j < 4 && j < (int)answers.size(); j++)
-          strlcpy(questions[count].answers[j].text, answers[j] | "", MAX_ANSWER_LEN);
-        count++;
-      }
+    QuizQuestion questions[MAX_QUIZ_QUESTIONS];
+    int count = 0;
+    for (JsonObject q : doc["questions"].as<JsonArray>()) {
+      if (count >= MAX_QUIZ_QUESTIONS) break;
+      strlcpy(questions[count].question, q["q"] | "", MAX_QUESTION_LEN);
+      questions[count].correctIndex = q["c"] | 0;
+      JsonArray answers = q["a"];
+      for (int j = 0; j < 4 && j < (int)answers.size(); j++)
+        strlcpy(questions[count].answers[j].text, answers[j] | "", MAX_ANSWER_LEN);
+      count++;
+    }
 
-      bool ok = saveQuizQuestions(ki, di, ti, questions, count);
-      req->send(200, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false}");
-    });
+    bool ok = saveQuizQuestions(taskId, questions, count);
+    req->send(200, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false}");
+  });
 
   server.on("/api/quiz/generate", HTTP_POST, [](AsyncWebServerRequest *req) {}, nullptr,
     [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
-      static uint8_t buf[512];
-      static size_t bufLen = 0;
-      if (index == 0) bufLen = 0;
-      if (bufLen + len < sizeof(buf)) { memcpy(buf + bufLen, data, len); bufLen += len; }
-      if (index + len < total) return;
+    static uint8_t buf[512];
+    static size_t bufLen = 0;
+    if (index == 0) bufLen = 0;
+    if (bufLen + len < sizeof(buf)) { memcpy(buf + bufLen, data, len); bufLen += len; }
+    if (index + len < total) return;
 
-      DynamicJsonDocument doc(512);
-      if (deserializeJson(doc, buf, bufLen)) { req->send(400, "application/json", "{\"ok\":false,\"error\":\"bad request\"}"); return; }
+    DynamicJsonDocument doc(512);
+    if (deserializeJson(doc, buf, bufLen)) { req->send(400, "application/json", "{\"ok\":false,\"error\":\"bad request\"}"); return; }
 
-      String apiKey = loadApiKey();
-      if (apiKey.isEmpty()) { req->send(400, "application/json", "{\"ok\":false,\"error\":\"no api key\"}"); return; }
+    String apiKey = loadApiKey();
+    if (apiKey.isEmpty()) { req->send(400, "application/json", "{\"ok\":false,\"error\":\"no api key\"}"); return; }
 
-      String topic = doc["topic"] | "";
-      if (topic.isEmpty()) { req->send(400, "application/json", "{\"ok\":false,\"error\":\"no topic\"}"); return; }
+    String topic = doc["topic"] | "";
+    if (topic.isEmpty()) { req->send(400, "application/json", "{\"ok\":false,\"error\":\"no topic\"}"); return; }
 
-      int ki = doc["kid"] | 0;
-      int di = doc["day"] | 0;
-      int ti = doc["task"] | 0;
+    uint32_t taskId = doc["taskId"] | 0;
+    if (taskId == 0) { req->send(400, "application/json", "{\"ok\":false,\"error\":\"no taskId\"}"); return; }
 
-      QuizQuestion questions[MAX_QUIZ_QUESTIONS];
-      int count = callAnthropicForQuiz(apiKey, topic, questions, MAX_QUIZ_QUESTIONS);
+    QuizQuestion questions[MAX_QUIZ_QUESTIONS];
+    int count = callAnthropicForQuiz(apiKey, topic, questions, MAX_QUIZ_QUESTIONS);
 
-      if (count <= 0) { req->send(500, "application/json", "{\"ok\":false,\"error\":\"generation failed\"}"); return; }
+    if (count <= 0) { req->send(500, "application/json", "{\"ok\":false,\"error\":\"generation failed\"}"); return; }
 
-      saveQuizQuestions(ki, di, ti, questions, count);
+    saveQuizQuestions(taskId, questions, count);
 
-      DynamicJsonDocument respDoc(8192);
-      respDoc["ok"] = true;
-      JsonArray qArr = respDoc.createNestedArray("questions");
-      for (int i = 0; i < count; i++) {
-        JsonObject q = qArr.createNestedObject();
-        q["q"]       = questions[i].question;
-        q["correct"] = questions[i].correctIndex;
-        JsonArray ans = q.createNestedArray("answers");
-        for (int j = 0; j < 4; j++) ans.add(questions[i].answers[j].text);
-      }
-      String out;
-      serializeJson(respDoc, out);
-      req->send(200, "application/json", out);
-    });
+    DynamicJsonDocument respDoc(8192);
+    respDoc["ok"] = true;
+    JsonArray qArr = respDoc.createNestedArray("questions");
+    for (int i = 0; i < count; i++) {
+      JsonObject q = qArr.createNestedObject();
+      q["q"]       = questions[i].question;
+      q["correct"] = questions[i].correctIndex;
+      JsonArray ans = q.createNestedArray("answers");
+      for (int j = 0; j < 4; j++) ans.add(questions[i].answers[j].text);
+    }
+    String out;
+    serializeJson(respDoc, out);
+    req->send(200, "application/json", out);
+  });
 
   server.on("/api/assign-rfid", HTTP_GET, [&state, &tft](AsyncWebServerRequest *req) {
     if (!req->hasParam("kid")) { req->send(400, "application/json", "{\"error\":\"missing kid\"}"); return; }
@@ -1358,6 +1465,40 @@ void setupWebserver(AsyncWebServer &server, AppState &state, TFT_eSPI &tft) {
     req->send(200, "application/json", "{\"ok\":true}");
   });
 
+  server.on("/api/debug/files", HTTP_GET, [](AsyncWebServerRequest* req) {
+    DynamicJsonDocument doc(8192);
+    doc["totalBytes"] = SPIFFS.totalBytes();
+    doc["usedBytes"]  = SPIFFS.usedBytes();
+    doc["freeBytes"]  = SPIFFS.totalBytes() - SPIFFS.usedBytes();
+    JsonArray files = doc.createNestedArray("files");
+    File root = SPIFFS.open("/");
+    File f = root.openNextFile();
+    while (f) {
+      JsonObject fo = files.createNestedObject();
+      fo["name"] = String(f.name());
+      fo["size"] = f.size();
+      f = root.openNextFile();
+    }
+    String out;
+    serializeJson(doc, out);
+    req->send(200, "application/json", out);
+  });
+
+  server.on("/api/debug/delete", HTTP_POST, [](AsyncWebServerRequest* req) {}, nullptr,
+    [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
+      DynamicJsonDocument doc(256);
+      deserializeJson(doc, data, len);
+      String path = doc["path"] | "";
+      // Ensure leading slash
+      if (path.length() > 0 && !path.startsWith("/")) path = "/" + path;
+      if (path.length() == 0 || path == "/data.json" || path == "/settings.json") {
+        req->send(400, "application/json", "{\"ok\":false,\"error\":\"protected or invalid path\"}");
+        return;
+      }
+      bool ok = SPIFFS.remove(path);
+      req->send(200, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"not found\"}");
+  });
+  
   server.onNotFound([](AsyncWebServerRequest *req) {
     req->send(404, "text/plain", "Not found");
   });
